@@ -4,8 +4,8 @@
 define('InEmpireCMSFtp',TRUE);
 
 class EmpireCMSFTP{
-	var $ftpconnectid;
-	var $ftptranmode;
+	public $ftpconnectid;
+	public $ftptranmode;
 
 	function wipespecial($str){   
 		return str_replace(array("\n","\r"),array('',''),$str);   
@@ -277,6 +277,7 @@ class EmpireCMSFTP{
 		{
 			return '';
 		}
+		$returnpath = ''; // Initialize $returnpath
 		$r=explode('/',$path);
 		$count=count($r);
 		for($i=0;$i<$count;$i++)

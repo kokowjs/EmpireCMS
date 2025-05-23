@@ -4,18 +4,18 @@ define('InEmpireCMSIconv',TRUE);
 class Chinese
 {
 	//存放简体中文与拼音对照表
-    var $pinyin_table = array();
+    public $pinyin_table = array();
 
 	//存放 GB <-> UNICODE 对照表的内容
-    var $unicode_table = array();
+    public $unicode_table = array();
 
 	//访问中文繁简互换表的文件指针
-    var $ctf;
+    public $ctf;
 
-    var $SourceText = "";
+    public $SourceText = "";
 
 	//配置
-    var $config  =  array(
+    public $config  =  array(
         'codetable_dir'         => '',                      //  存放各种语言互换表的目录
         'source_lang'           => '',                      //  字符的原编码
         'target_lang'           => '',                      //  转换后的编码
@@ -26,7 +26,7 @@ class Chinese
         'BIG5toUnicode_table'   => 'big5-unicode.table'     //  繁体中文转换为UNICODE的对照表
     );
 
-    function Chinese($dir='./')
+    function __construct($dir='./') // Changed to PHP 5+ constructor
     {
         $this->config['codetable_dir'] = $dir."../data/codetable/";
     }
@@ -122,8 +122,10 @@ class Chinese
                     exit;
                 }
                 $this->unicode_table = array();
-                while(list($key,$value)=each($tmp))
-                $this->unicode_table[hexdec(substr($value,0,6))]=substr($value,7,6);
+                foreach($tmp as $key => $value) // Replaced each()
+                {
+                    $this->unicode_table[hexdec(substr($value,0,6))]=substr($value,7,6);
+                }
             }
 
             // 假如转换目标编码为 UNICODE 的话
@@ -134,8 +136,10 @@ class Chinese
                     exit;
                 }
                 $this->unicode_table = array();
-                while(list($key,$value)=each($tmp))
-                $this->unicode_table[hexdec(substr($value,0,6))]=substr($value,9,4);
+                foreach($tmp as $key => $value) // Replaced each()
+                {
+                    $this->unicode_table[hexdec(substr($value,0,6))]=substr($value,9,4);
+                }
             }
         }
 
@@ -157,8 +161,10 @@ class Chinese
                     exit;
                 }
                 $this->unicode_table = array();
-                while(list($key,$value)=each($tmp))
-                $this->unicode_table[hexdec(substr($value,0,6))]=substr($value,7,6);
+                foreach($tmp as $key => $value) // Replaced each()
+                {
+                    $this->unicode_table[hexdec(substr($value,0,6))]=substr($value,7,6);
+                }
             }
 
             // 假如转换目标编码为 UNICODE 的话
@@ -169,8 +175,10 @@ class Chinese
                     exit;
                 }
                 $this->unicode_table = array();
-                while(list($key,$value)=each($tmp))
-                $this->unicode_table[hexdec(substr($value,0,6))]=substr($value,9,4);
+                foreach($tmp as $key => $value) // Replaced each()
+                {
+                    $this->unicode_table[hexdec(substr($value,0,6))]=substr($value,9,4);
+                }
             }
 
             // 假如转换目标编码为拼音的话
@@ -200,7 +208,7 @@ class Chinese
                     exit;
                 }
                 $this->unicode_table = array();
-                while(list($key,$value)=each($tmp))
+                foreach($tmp as $key => $value) // Replaced each()
                 {
                 	$this->unicode_table[hexdec(substr($value,7,6))]=substr($value,0,6);
                 }
@@ -214,7 +222,7 @@ class Chinese
                     exit;
                 }
                 $this->unicode_table = array();
-                while(list($key,$value)=each($tmp))
+                foreach($tmp as $key => $value) // Replaced each()
                 {
                 	$this->unicode_table[hexdec(substr($value,7,6))]=substr($value,0,6);
                 }

@@ -15,7 +15,8 @@ function do_dbconnect($dbhost,$dbport,$dbusername,$dbpassword,$dbname){
 	$dblink=@mysqli_connect($dblocalhost,$dbusername,$dbpassword);
 	if(!$dblink)
 	{
-		echo"Cann't connect to DB!";
+		// More informative error, including mysqli_connect_error()
+		echo "Cann't connect to DB! Error: " . mysqli_connect_error();
 		exit();
 	}
 	//编码
@@ -32,10 +33,18 @@ function do_dbconnect($dbhost,$dbport,$dbusername,$dbpassword,$dbname){
 		}
 		if($q)
 		{
+			// Keep @ suppression for now, as error handling for SET is complex
 			@mysqli_query($dblink,'SET '.$q);
 		}
 	}
-	@mysqli_select_db($dblink,$dbname);
+	// Check mysqli_select_db
+	if(!@mysqli_select_db($dblink,$dbname))
+	{
+		// Error message for database selection failure
+		echo "Cann't select database: ".$dbname."! Error: ".mysqli_error($dblink);
+		@mysqli_close($dblink); // Close connection before exiting
+		exit();
+	}
 	return $dblink;
 }
 

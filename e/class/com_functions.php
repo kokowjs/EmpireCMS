@@ -118,6 +118,7 @@ function DelGbookClass($bid,$do=0,$userid,$username){
 function ReturnGbookClass($bid,$do=0){
 	global $empire,$dbtbpre;
 	$bid=(int)$bid;
+	$select = ''; // Initialize $select
 	if(empty($do))
 	{
 		$table="{$dbtbpre}enewsgbookclass";
@@ -190,15 +191,17 @@ function DelGbook_all($lyid,$bid,$userid,$username){
 	//验证权限
 	CheckLevel($userid,$username,$classid,"gbook");
 	$bid=(int)$bid;
-	$count=count($lyid);
+	$count=is_array($lyid) ? count($lyid) : 0; // Ensure $lyid is an array
 	if(empty($count))
 	{printerror("NotChangeLyid","history.go(-1)");}
+	$add = ''; // Initialize $add
 	for($i=0;$i<$count;$i++)
 	{
 		$lyid[$i]=(int)$lyid[$i];
 		$add.="lyid='$lyid[$i]' or ";
 	}
 	$add=substr($add,0,strlen($add)-4);
+	if (empty($add)) { printerror("NotChangeLyid","history.go(-1)"); } // Avoid empty WHERE clause
 	$sql=$empire->query("delete from {$dbtbpre}enewsgbook where ".$add);
 	if($sql)
 	{
@@ -216,15 +219,17 @@ function CheckGbook_all($lyid,$bid,$userid,$username){
 	//验证权限
 	CheckLevel($userid,$username,$classid,"gbook");
 	$bid=(int)$bid;
-	$count=count($lyid);
+	$count=is_array($lyid) ? count($lyid) : 0; // Ensure $lyid is an array
 	if(empty($count))
 	{printerror("NotChangeCheckLyid","history.go(-1)");}
+	$add = ''; // Initialize $add
 	for($i=0;$i<$count;$i++)
 	{
 		$lyid[$i]=(int)$lyid[$i];
 		$add.="lyid='$lyid[$i]' or ";
 	}
 	$add=substr($add,0,strlen($add)-4);
+	if (empty($add)) { printerror("NotChangeCheckLyid","history.go(-1)"); } // Avoid empty WHERE clause
 	$sql=$empire->query("update {$dbtbpre}enewsgbook set checked=0 where ".$add);
 	if($sql)
 	{
@@ -239,28 +244,30 @@ function CheckGbook_all($lyid,$bid,$userid,$username){
 //删除反馈附件
 function DelFeedbackFile($filename,$filepath){
 	global $empire,$dbtbpre,$public_r,$efileftp_dr;
+	$where = ''; // Initialize $where
+	$or = ''; // Initialize $or
 	if($filename)
 	{
 		$fpath=0;
 		$getfpath=0;
 		$addfilepath=$filepath?$filepath.'/':'';
-		$filer=explode(",",$filename);
+		$filer=explode(",",(string)$filename); // Cast to string
 		$fcount=count($filer);
 		for($j=0;$j<$fcount;$j++)
 		{
 			if(!$getfpath)
 			{
 				$ftr=$empire->fetch1("select fpath from {$dbtbpre}enewsfile_other where modtype=4 and path='$filepath' and filename='".$filer[$j]."' limit 1");
-				$fpath=$ftr[fpath];
+				$fpath = $ftr['fpath'] ?? 0; // Safe access
 				$getfpath=1;
 			}
 			$fspath=ReturnFileSavePath(0,$fpath);
-			$delfile=eReturnEcmsMainPortPath().$fspath['filepath'].$addfilepath.$filer[$j];//moreport
+			$delfile=eReturnEcmsMainPortPath().($fspath['filepath'] ?? '').$addfilepath.$filer[$j];//moreport
 			DelFiletext($delfile);
 			$where.=$or."filename='".$filer[$j]."'";
 			$or=" or ";
 			//FileServer
-			if($public_r['openfileserver'])
+			if(!empty($public_r['openfileserver'])) // Safe access
 			{
 				$efileftp_dr[]=$delfile;
 			}
@@ -989,7 +996,9 @@ function DelMoreMsg($add,$userid,$username){
 function ReturnSendMemberGroup($r){
 	global $public_r,$ecms_config;
 	$user_groupid=eReturnMemberDefGroupid();
-	$count=count($r);
+	$a = ''; // Initialize $a
+	$checkbox = ''; // Initialize $checkbox
+	$count = is_array($r) ? count($r) : 0;
 	if($count==0)
 	{
 		printerror("EmptySendMemberGroup","");
@@ -1019,8 +1028,9 @@ function ReturnSendMemberGroup($r){
 
 //返回会员用户名
 function ReturnSendMemberUsername($username){
-	$r=explode('|',$username);
+	$r=explode('|',(string)$username); // Cast to string
 	$count=count($r);
+	$a = ''; // Initialize $a
 	for($i=0;$i<$count;$i++)
 	{
 		$r[$i]=RepPostVar($r[$i]);
@@ -1111,8 +1121,9 @@ function DoSendMsg($add,$ecms=0,$userid,$username){
 //输出一组提交表单
 function EchoSendMsgForm($enews,$returnurl,$start,$line,$checkbox,$add){
 	global $fun_r;
+	$onesendmsg = $fun_r['OneSendMsg'] ?? 'Processing message batch, current ID: ';
 	?>
-	<?=$fun_r['OneSendMsg']?>(<b><font color=red><?=$start?></font></b>)
+	<?=$onesendmsg?>(<b><font color=red><?=$start?></font></b>)
 	<form name="sendform" method="post" action="<?=$returnurl?>">
 		<?=hReturnEcmsHashStrForm(0)?>
 		<input type=hidden name="enews" value="<?=$enews?>">
