@@ -17,6 +17,9 @@ $batchSize = 100;
 // 获取表中的记录总数
 $query = "SELECT COUNT(*) as total FROM phome_ecms_videos WHERE isgood != 3 AND videourl IS NOT NULL";
 $result = $conn->query($query);
+if (!$result) {
+    die("Error getting total record count: " . $conn->error . "\nSQL: " . $query);
+}
 $row = $result->fetch_assoc();
 $totalRecords = $row['total'];
 
@@ -25,6 +28,10 @@ for ($offset = 0; $offset < $totalRecords; $offset += $batchSize) {
     // 检索一批记录
     $query = "SELECT id, videourl FROM phome_ecms_videos WHERE isgood != 3 AND videourl IS NOT NULL LIMIT $offset, $batchSize";
     $result = $conn->query($query);
+    if (!$result) {
+        echo "Error fetching batch records: " . $conn->error . "\nSQL: " . $query . "<br>";
+        continue; // Skip this batch on error
+    }
 
     // 处理批次中的每条记录
     while ($row = $result->fetch_assoc()) {
@@ -38,7 +45,10 @@ for ($offset = 0; $offset < $totalRecords; $offset += $batchSize) {
         if (!file_exists($localPath)) {
             // 将isgood更新为3
             $updateQuery = "UPDATE phome_ecms_videos SET isgood = 3 WHERE id = $id";
-            $conn->query($updateQuery);
+            $updateResult = $conn->query($updateQuery);
+            if (!$updateResult) {
+                echo "Update query failed for ID $id: " . $conn->error . "\nSQL: " . $updateQuery . "<br>";
+            }
 
             // 输出处理进度
             echo "正在处理记录ID：$id<br>";

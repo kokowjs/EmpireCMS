@@ -9,13 +9,26 @@ function getGoogleIndexCount($domain) {
     curl_setopt($ch, CURLOPT_TIMEOUT, 60);
     curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
     $html = curl_exec($ch);
+
+    // Check for cURL errors
+    if ($html === false) {
+        // error_log("cURL error for domain $domain: " . curl_error($ch)); // Optional: log error
+        curl_close($ch);
+        return 0; // Return 0 or handle error as appropriate
+    }
     curl_close($ch);
+
+    // Ensure $html is a string before passing to preg_match (PHP 8.1 TypeError if not)
+    if (!is_string($html)) {
+        // error_log("cURL result for domain $domain was not a string."); // Optional: log error
+        return 0;
+    }
 
     // 使用正则表达式匹配收录数
     $pattern = '/About ([0-9,]+) results/';
-    preg_match($pattern, $html, $matches);
-
-    if (isset($matches[1])) {
+    // preg_match can also return false on error (though less likely with a fixed pattern here)
+    // or 0 if no match is found.
+    if (preg_match($pattern, $html, $matches) === 1 && isset($matches[1])) {
         $count = str_replace(',', '', $matches[1]);
         return intval($count);
     }
@@ -97,16 +110,37 @@ $domains = array(
 if (isset($_POST['domain'])) {
     $domain = $_POST['domain'];
     $indexCount = getGoogleIndexCount($domain);
-    echo $indexCount;
+    echo $indexCount; // This is already an int
     
     // 将结果存储到txt文件
     $file = 'site_results.txt';
-    $previousResults = file_exists($file) ? unserialize(file_get_contents($file)) : array();
-    $previousCount = isset($previousResults[$domain]) ? $previousResults[$domain] : 0;
+    $previousResults = array(); // Initialize as empty array
 
-    $currentCount = intval($indexCount);
+    if (file_exists($file)) {
+        $fileContent = file_get_contents($file);
+        // Ensure content was read and is not empty before unserializing
+        if ($fileContent !== false && $fileContent !== '') {
+            $unserializedData = unserialize($fileContent);
+            if (is_array($unserializedData)) {
+                $previousResults = $unserializedData;
+            } else {
+                // error_log("Failed to unserialize data from $file or data is not an array."); // Optional: log error
+            }
+        } elseif ($fileContent === false) {
+            // error_log("Failed to read $file."); // Optional: log error
+        }
+    }
+    
+    // Ensure $previousCount is an integer.
+    $previousCount = isset($previousResults[$domain]) ? intval($previousResults[$domain]) : 0;
+
+    // $indexCount is already an int from getGoogleIndexCount's return type.
+    $currentCount = $indexCount; 
     $previousResults[$domain] = $currentCount;
-    file_put_contents($file, serialize($previousResults));
+    
+    if (file_put_contents($file, serialize($previousResults)) === false) {
+        // error_log("Failed to write to $file."); // Optional: log error
+    }
 
     // 比较与上次查询的结果
     $difference = $currentCount - $previousCount;

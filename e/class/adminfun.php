@@ -6,7 +6,8 @@ function InsertErrorLoginNum($username,$password,$loginauth,$ip,$time){
 	$loginnum=intval(getcvar('loginnum'));
 	$logintime=$time;
 	$lastlogintime=intval(getcvar('lastlogintime'));
-	if($lastlogintime&&($logintime-$lastlogintime>$public_r['logintime']*60))
+	$public_logintime = (int)($public_r['logintime'] ?? 0); // Default to 0 if not set
+	if($lastlogintime&&($logintime-$lastlogintime > $public_logintime*60))
 	{
 		$loginnum=0;
 	}
@@ -14,7 +15,7 @@ function InsertErrorLoginNum($username,$password,$loginauth,$ip,$time){
 	esetcookie("loginnum",$loginnum,$logintime+3600*24);
 	esetcookie("lastlogintime",$logintime,$logintime+3600*24);
 	//数据库
-	$chtime=$time-$public_r['logintime']*60;
+	$chtime=$time - $public_logintime*60;
 	$empire->query("delete from {$dbtbpre}enewsloginfail where lasttime<$chtime");
 	$r=$empire->fetch1("select ip from {$dbtbpre}enewsloginfail where ip='$ip' limit 1");
 	if($r['ip'])
@@ -35,19 +36,21 @@ function CheckLoginNum($ip,$time){
 	//COOKIE验证
 	$loginnum=intval(getcvar('loginnum'));
 	$lastlogintime=intval(getcvar('lastlogintime'));
+	$public_logintime = (int)($public_r['logintime'] ?? 0); // Default to 0
+	$public_loginnum = (int)($public_r['loginnum'] ?? 5); // Default to 5 attempts
 	if($lastlogintime)
 	{
-		if($time-$lastlogintime<$public_r['logintime']*60)
+		if($time-$lastlogintime < $public_logintime*60)
 		{
-			if($loginnum>=$public_r['loginnum'])
+			if($loginnum >= $public_loginnum)
 			{
 				printerror("LoginOutNum",eAdminLoginReturnUrl(0));
 			}
 		}
 	}
 	//数据库验证
-	$chtime=$time-$public_r['logintime']*60;
-	$num=$empire->gettotal("select count(*) as total from {$dbtbpre}enewsloginfail where ip='$ip' and num>=$public_r[loginnum] and lasttime>$chtime limit 1");
+	$chtime=$time - $public_logintime*60;
+	$num=$empire->gettotal("select count(*) as total from {$dbtbpre}enewsloginfail where ip='$ip' and num>=$public_loginnum and lasttime>$chtime limit 1");
 	if($num)
 	{
 		printerror("LoginOutNum",eAdminLoginReturnUrl(0));
@@ -65,7 +68,8 @@ function login($username,$password,$key,$post){
 	}
 	//验证码
 	$keyvname='checkkey';
-	if(!$public_r['adminloginkey'])
+	$adminloginkey = $public_r['adminloginkey'] ?? false;
+	if(!$adminloginkey)
 	{
 		ecmsCheckShowKey($keyvname,$key,0,0,1);
 	}
@@ -77,9 +81,10 @@ function login($username,$password,$key,$post){
 	$logintime=time();
 	CheckLoginNum($loginip,$logintime);
 	//认证码
-	if($ecms_config['esafe']['loginauth'])
+	$esafe_loginauth = $ecms_config['esafe']['loginauth'] ?? null;
+	if($esafe_loginauth)
 	{
-		if('dg'.$ecms_config['esafe']['loginauth']!='dg'.$post['loginauth'])
+		if('dg'.$esafe_loginauth != 'dg'.($post['loginauth'] ?? null))
 		{
 			InsertErrorLoginNum($username,$password,1,$loginip,$logintime);
 			printerror("ErrorLoginAuth",eAdminLoginReturnUrl(0));
@@ -106,15 +111,15 @@ function login($username,$password,$key,$post){
 	}
 	if($user_addr['equestion'])
 	{
-		$equestion=(int)$post['equestion'];
-		$eanswer=$post['eanswer'];
-		if($user_addr['equestion']!=$equestion)
+		$post_equestion = (int)($post['equestion'] ?? 0);
+		$post_eanswer = $post['eanswer'] ?? null;
+		if($user_addr['equestion'] != $post_equestion)
 		{
 			InsertErrorLoginNum($username,$password,0,$loginip,$logintime);
 			printerror("LoginFail",eAdminLoginReturnUrl(0));
 		}
-		$ckeanswer=ReturnHLoginQuestionStr($user_r['userid'],$username,$user_addr['equestion'],$eanswer);
-		if('dg'.$ckeanswer!='dg'.$user_addr['eanswer'])
+		$ckeanswer=ReturnHLoginQuestionStr($user_r['userid'],$username,$user_addr['equestion'],$post_eanswer);
+		if('dg'.$ckeanswer != 'dg'.($user_addr['eanswer'] ?? null))
 		{
 			InsertErrorLoginNum($username,$password,0,$loginip,$logintime);
 			printerror("LoginFail",eAdminLoginReturnUrl(0));
@@ -128,19 +133,23 @@ function login($username,$password,$key,$post){
 	//取得随机密码
 	$rnd=make_password(20);
 	$loginipport=egetipport();
-	$sql=$empire->query("update {$dbtbpre}enewsuser set rnd='$rnd',loginnum=loginnum+1,lastip='$loginip',lasttime='$logintime',pretime='$user_r[lasttime]',preip='".RepPostVar($user_r[lastip])."',lastipport='$loginipport',preipport='".RepPostVar($user_r[lastipport])."' where username='$username' limit 1");
+	$sql=$empire->query("update {$dbtbpre}enewsuser set rnd='$rnd',loginnum=loginnum+1,lastip='$loginip',lasttime='$logintime',pretime='".($user_r['lasttime'] ?? 0)."',preip='".RepPostVar($user_r['lastip'] ?? '')."',lastipport='$loginipport',preipport='".RepPostVar($user_r['lastipport'] ?? '')."' where username='$username' limit 1");
 	$r=$empire->fetch1("select groupid,userid,styleid,userprikey from {$dbtbpre}enewsuser where username='$username' limit 1");
+	
+	$r_styleid = $r['styleid'] ?? null;
+	$def_admin_style = $public_r['defadminstyle'] ?? 1;
+
 	//样式
-	if(empty($r[styleid]))
+	if(empty($r_styleid))
 	{
-		$stylepath=$public_r['defadminstyle']?$public_r['defadminstyle']:1;
+		$stylepath = $def_admin_style;
 	}
 	else
 	{
-		$styler=$empire->fetch1("select path,styleid from {$dbtbpre}enewsadminstyle where styleid='$r[styleid]'");
-		if(empty($styler[styleid]))
+		$styler=$empire->fetch1("select path,styleid from {$dbtbpre}enewsadminstyle where styleid='$r_styleid'");
+		if(empty($styler['styleid']))
 		{
-			$stylepath=$public_r['defadminstyle']?$public_r['defadminstyle']:1;
+			$stylepath = $def_admin_style;
 		}
 		else
 		{
@@ -186,7 +195,7 @@ function login($username,$password,$key,$post){
 		$cache_url="CreateCache.php?enews=$cache_enews&ecmstourl=$cache_ecmstourl&mess=$cache_mess".hReturnEcmsHashStrDef(0,'ehref');
 		//操作日志
 	    insert_dolog("");
-		if($post['adminwindow'])
+		if(!empty($post['adminwindow']))
 		{
 		?>
 			<script>
@@ -216,7 +225,8 @@ function login($username,$password,$key,$post){
 //写入登录日志
 function insert_log($username,$password,$status,$loginip,$loginauth){
 	global $empire,$ecms_config,$dbtbpre;
-	if($ecms_config['esafe']['theloginlog'])
+	$esafe_theloginlog = $ecms_config['esafe']['theloginlog'] ?? false;
+	if($esafe_theloginlog)
 	{
 		return "";
 	}
@@ -272,10 +282,10 @@ function eCheckAccessAdminLoginIp($openips){
 	}
 	$userip=egetip();
 	//允许IP
-	if($openips)
+	if($openips) // $openips should be a string here
 	{
 		$close=1;
-		foreach(explode("\n",$openips) as $ctrlip)
+		foreach(explode("\n", (string)$openips) as $ctrlip)
 		{
 			if(preg_match("/^(".preg_quote(($ctrlip=trim($ctrlip)),'/').")/",$userip))
 			{

@@ -1,21 +1,21 @@
 <?php
 
     class SMTP {
-        var $SMTP_PORT = 25; # the default SMTP PORT
-        var $CRLF = "\r\n";  # CRLF pair
+        public $SMTP_PORT = 25; # the default SMTP PORT
+        public $CRLF = "\r\n";  # CRLF pair
 
-        var $smtp_conn;      # the socket to the server
-        var $error;          # error if any on the last call
-        var $helo_rply;      # the reply the server sent to us for HELO
+        public $smtp_conn;      # the socket to the server
+        public $error;          # error if any on the last call
+        public $helo_rply;      # the reply the server sent to us for HELO
 
-        var $do_debug;       # the level of debug to perform
+        public $do_debug;       # the level of debug to perform
 
         /*
-         * SMTP()
+         * __construct()
          *
          * Initialize the class so that the data is in a known state.
          */
-        function SMTP() {
+        function __construct() {
             $this->smtp_conn = 0;
             $this->error = null;
             $this->helo_rply = null;
@@ -276,7 +276,13 @@
             # does not contain a space then it _should_ be a header
             # and we can process all lines before a blank "" line as
             # headers.
-            $field = substr($lines[0],0,strpos($lines[0],":"));
+            $field = '';
+            if (isset($lines[0])) { // Check if $lines[0] exists
+                $colonPos = strpos($lines[0],":");
+                if ($colonPos !== false) {
+                    $field = substr($lines[0],0,$colonPos);
+                }
+            }
             $in_headers = false;
             if(!empty($field) && !strstr($field," ")) {
                 $in_headers = true;
@@ -284,7 +290,7 @@
 
             $max_line_length = 998; # used below; set here for ease in change
 
-            while(list(,$line) = @each($lines)) {
+            foreach($lines as $line) { // Replaced each() with foreach
                 $lines_out = null;
                 if($line == "" && $in_headers) {
                     $in_headers = false;
@@ -293,6 +299,10 @@
                 # smaller lines
                 while(strlen($line) > $max_line_length) {
                     $pos = strrpos(substr($line,0,$max_line_length)," ");
+                    if ($pos === false) { // If no space found, break to avoid infinite loop
+                        // This case might need specific handling if lines can be >998 without spaces
+                        break; 
+                    }
                     $lines_out[] = substr($line,0,$pos);
                     $line = substr($line,$pos + 1);
                     # if we are processing headers we need to
@@ -305,10 +315,11 @@
                 $lines_out[] = $line;
 
                 # now send the lines to the server
-                while(list(,$line_out) = @each($lines_out)) {
-                    if(strlen($line_out) > 0)
-                    {
-                        if(substr($line_out, 0, 1) == ".") {
+                if (is_array($lines_out)) { // Ensure $lines_out is an array before foreach
+                    foreach($lines_out as $line_out) { // Replaced each() with foreach
+                        if(strlen($line_out) > 0)
+                        {
+                            if(substr($line_out, 0, 1) == ".") {
                             $line_out = "." . $line_out;
                         }
                     }
@@ -389,11 +400,13 @@
 
             # parse the reply and place in our array to return to user
             $entries = explode($this->CRLF,$rply);
-            while(list(,$l) = @each($entries)) {
+            $list = array(); // Initialize $list
+            foreach($entries as $l) { // Replaced each() with foreach
                 $list[] = substr($l,4);
             }
 
-            return $rval;
+            // $rval was not defined in the original code snippet for Expand, assuming it should be $list
+            return $list; 
         }
 
         /*

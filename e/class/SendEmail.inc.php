@@ -153,6 +153,14 @@ class phpmailer
      */
     var $LE           = "\n";
 
+    // Used to hold the PHPMailer class version number.
+    // @private
+    // var $Version = "1.54"; // Replaced by const VERSION below
+
+    // Used to hold the SMTP class object.
+    // @private
+    var $smtp = NULL;
+
 
     /////////////////////////////////////////////////
     // SMTP VARIABLES
@@ -284,7 +292,7 @@ class phpmailer
      * @public
      * @returns void
      */
-    function IsHTML($bool) {
+    function IsHTML($bool) { // Kept as is, already uses $this->ContentType
         if($bool == true)
             $this->ContentType = "text/html";
         else
@@ -297,7 +305,7 @@ class phpmailer
      * @public
      * @returns void
      */
-    function IsSMTP() {
+    function IsSMTP() { // Kept as is
         $this->Mailer = "smtp";
     }
 
@@ -307,7 +315,7 @@ class phpmailer
      * @public
      * @returns void
      */
-    function IsMail() {
+    function IsMail() { // Kept as is
         $this->Mailer = "mail";
     }
 
@@ -317,7 +325,7 @@ class phpmailer
      * @public
      * @returns void
      */
-    function IsSendmail() {
+    function IsSendmail() { // Kept as is
         $this->Mailer = "sendmail";
     }
 
@@ -326,10 +334,16 @@ class phpmailer
      * @public
      * @returns void
      */
-    function IsQmail() {
+    function IsQmail() { // Kept as is
         //$this->Sendmail = "/var/qmail/bin/qmail-inject";
         $this->Sendmail = "/var/qmail/bin/sendmail";
         $this->Mailer = "sendmail";
+    }
+
+    // Add modern constructor
+    function __construct() {
+        // Constructor logic can be added here if needed for initialization
+        // For now, it will just ensure PHP 4 constructor isn't solely relied upon
     }
 
 
@@ -637,11 +651,15 @@ class phpmailer
      */
     function smtp_send($header, $body) {
         // Include SMTP class code, but not twice
-        include_once($this->PluginDir . "class.smtp.php");
+        if (!class_exists('SMTP')) { // Ensure SMTP class is loaded
+            include_once($this->PluginDir . "class.smtp.php");
+        }
 
-        $smtp = new SMTP;
+        if (is_null($this->smtp)) { // Use a class property for the SMTP object
+            $this->smtp = new SMTP;
+        }
 
-        $smtp->do_debug = $this->SMTPDebug;
+        $this->smtp->do_debug = $this->SMTPDebug;
 
         // Try to connect to all SMTP servers
         $hosts = explode(";", $this->Host);
@@ -662,7 +680,7 @@ class phpmailer
                 $port = $this->Port;
             }
 
-            if($smtp->Connect($host, $port, $this->Timeout))
+            if($this->smtp->Connect($host, $port, $this->Timeout))
                 $connection = true;
             //printf("%s host could not connect<br>", $hosts[$index]); //debug only
             $index++;
@@ -674,12 +692,12 @@ class phpmailer
         }
 
         // Must perform HELO before authentication
-        $smtp->Hello($this->Helo);
+        $this->smtp->Hello($this->Helo);
 
         // If user requests SMTP authentication
         if($this->SMTPAuth)
         {
-            if(!$smtp->Authenticate($this->Username, $this->Password))
+            if(!$this->smtp->Authenticate($this->Username, $this->Password))
             {
                 $this->error_handler("SMTP Error: Could not authenticate");
                 return false;
@@ -691,7 +709,7 @@ class phpmailer
         else
             $smtp_from = $this->Sender;
 
-        if(!$smtp->Mail(sprintf("<%s>", $smtp_from)))
+        if(!$this->smtp->Mail(sprintf("<%s>", $smtp_from)))
         {
             $e = sprintf("SMTP Error: From address [%s] failed", $smtp_from);
             $this->error_handler($e);
@@ -701,42 +719,43 @@ class phpmailer
         // Attempt to send attach all recipients
         for($i = 0; $i < count($this->to); $i++)
         {
-            if(!$smtp->Recipient(sprintf("<%s>", $this->to[$i][0])))
+            if(!$this->smtp->Recipient(sprintf("<%s>", $this->to[$i][0])))
                 $bad_rcpt[] = $this->to[$i][0];
         }
         for($i = 0; $i < count($this->cc); $i++)
         {
-            if(!$smtp->Recipient(sprintf("<%s>", $this->cc[$i][0])))
+            if(!$this->smtp->Recipient(sprintf("<%s>", $this->cc[$i][0])))
                 $bad_rcpt[] = $this->cc[$i][0];
         }
         for($i = 0; $i < count($this->bcc); $i++)
         {
-            if(!$smtp->Recipient(sprintf("<%s>", $this->bcc[$i][0])))
+            if(!$this->smtp->Recipient(sprintf("<%s>", $this->bcc[$i][0])))
                 $bad_rcpt[] = $this->bcc[$i][0];
         }
 
         // Create error message
         if(count($bad_rcpt) > 0)
         {
+            $e_msg = ""; // Renamed to avoid conflict with outer $e
             for($i = 0; $i < count($bad_rcpt); $i++)
             {
                 if($i != 0)
-                    $e .= ", ";
-                $e .= $bad_rcpt[$i];
+                    $e_msg .= ", ";
+                $e_msg .= $bad_rcpt[$i];
             }
-            $e = sprintf("SMTP Error: The following recipients failed [%s]", $e);
-            $this->error_handler($e);
+            $e_msg = sprintf("SMTP Error: The following recipients failed [%s]", $e_msg);
+            $this->error_handler($e_msg);
 
             return false;
         }
 
 
-        if(!$smtp->Data(sprintf("%s%s", $header, $body)))
+        if(!$this->smtp->Data(sprintf("%s%s", $header, $body)))
         {
             $this->error_handler("SMTP Error: Data not accepted");
             return false;
         }
-        $smtp->Quit();
+        $this->smtp->Quit();
 
         return true;
     }
@@ -1241,11 +1260,15 @@ class phpmailer
             $encoded .= $this->LE;
 
         // Replace every high ascii, control and = characters
-        $encoded = preg_replace("/([\001-\010\013\014\016-\037\075\177-\377])/e",
-                  "'='.sprintf('%02X', ord('\\1'))", $encoded);
+        // PHP 7.0+ compatible: preg_replace_callback
+        $encoded = preg_replace_callback("/([\001-\010\013\014\016-\037\075\177-\377])/",
+            function($matches) { return '='.sprintf('%02X', ord($matches[1])); }, $encoded);
+
         // Replace every spaces and tabs when it's the last character on a line
-        $encoded = preg_replace("/([\011\040])".$this->LE."/e",
-                  "'='.sprintf('%02X', ord('\\1')).'".$this->LE."'", $encoded);
+        // PHP 7.0+ compatible: preg_replace_callback
+        // Also ensure $this->LE is correctly handled in regex if it contains special chars
+        $encoded = preg_replace_callback("/([\011\040])(".preg_quote($this->LE, '/').")/",
+            function($matches) { return '='.sprintf('%02X', ord($matches[1])).$matches[2]; }, $encoded);
 
         // Maximum line length of 76 characters before CRLF (74 + space + '=')
         $encoded = $this->word_wrap($encoded, 74, true);
@@ -1451,20 +1474,17 @@ class phpmailer
      * @returns mixed
      */
     function get_server_var($varName) {
-        global $HTTP_SERVER_VARS;
-        global $HTTP_ENV_VARS;
-
-        if(!isset($_SERVER))
-        {
-            $_SERVER = $HTTP_SERVER_VARS;
-            if(!isset($_SERVER["REMOTE_ADDR"]))
-                $_SERVER = $HTTP_ENV_VARS; // must be Apache
-        }
-        
-        if(isset($_SERVER[$varName]))
+        // $_SERVER should be directly available in PHP 5+
+        if(isset($_SERVER[$varName])) {
             return $_SERVER[$varName];
-        else
-            return "";
+        }
+        // Fallback for older environments or specific setups if $_ENV was intended
+        /*
+        elseif(isset($_ENV[$varName])) {
+            return $_ENV[$varName];
+        }
+        */
+        return "";
     }
 
     /**
@@ -1569,7 +1589,7 @@ class Boundary
     /**
      * Main constructor.
      */
-    function Boundary($boundary_id) {
+    function __construct($boundary_id) { // PHP 5+ constructor
         $this->ID = $boundary_id;
     }
     
@@ -1579,22 +1599,29 @@ class Boundary
      * @returns string
      */
     function GetSource($bLineEnding = true) {
-        $ret = array();
+        // $ret = array(); // $ret was unused
+        $mime = array();
         $mime[] = sprintf("--%s%s", $this->ID, $this->LE);
-        $mime[] = sprintf("Content-Type: %s; charset = \"%s\"%s", 
+        $mime[] = sprintf("Content-Type: %s; charset=\"%s\"%s", // Added quotes around charset value
                           $this->ContentType, $this->CharSet, $this->LE);
-        //$mime[] = sprintf("Content-Transfer-Encoding: %s%s", $this->Encoding, 
-        //                  $this->LE);
+        // Make sure Encoding is set if this line is to be used.
+        if (!empty($this->Encoding)) {
+             $mime[] = sprintf("Content-Transfer-Encoding: %s%s", $this->Encoding, $this->LE);
+        }
         
         if(strlen($this->Disposition) > 0)
         {
-            $mime[] = sprintf("Content-Disposition: %s;");
-            if(strlen($this->FileName) > 0)
-                $mime[] = sprinf("filename=\"%s\"", $this->$this->FileName);
+            $dispositionLine = sprintf("Content-Disposition: %s;", $this->Disposition);
+            if(strlen($this->FileName) > 0) {
+                 // Corrected typo sprinf to sprintf and variable access $this->$this->FileName to $this->FileName
+                $dispositionLine .= sprintf(" filename=\"%s\"", $this->FileName);
+            }
+            $mime[] = $dispositionLine . $this->LE;
         }
         
-        if($bLineEnding)
+        if($bLineEnding) {
             $mime[] = $this->LE;
+        }
 
         return join("", $mime);
     }
@@ -1603,37 +1630,41 @@ class Boundary
 //初使化邮件发送
 function FirstSendMail($r,$title,$msgtext){
 	global $ecms_config;
-	$r['fromemail']=RepPostVar($r['fromemail']);
-	$r['emailname']=RepPostVar($r['emailname']);
-	$mailer=new phpmailer();
-	if($r['sendmailtype']==1)//smtp
+	$r_fromemail = isset($r['fromemail']) ? RepPostVar($r['fromemail']) : 'root@localhost';
+	$r_emailname = isset($r['emailname']) ? RepPostVar($r['emailname']) : 'Root User';
+	
+	$mailer=new phpmailer(); // Uses new __construct()
+	
+	$sendmailtype = isset($r['sendmailtype']) ? $r['sendmailtype'] : 0;
+	if($sendmailtype==1)//smtp
 	{
 		$mailer->IsSMTP();
-		$mailer->Host=$r['smtphost'];
+		$mailer->Host = isset($r['smtphost']) ? $r['smtphost'] : 'localhost';
 		//端口
-		if($r['smtpport'])
+		if(!empty($r['smtpport']))
 		{
-			$mailer->Port=$r['smtpport'];
+			$mailer->Port = (int)$r['smtpport'];
 		}
 		//SMTP服务器需要认证
-		if($r['loginemail'])
+		if(!empty($r['loginemail'])) // Check if loginemail is not empty, not just its existence
 		{
 			$mailer->SMTPAuth=true;
-			$mailer->Username=$r['emailusername'];
-			$mailer->Password=$r['emailpassword'];
+			$mailer->Username = isset($r['emailusername']) ? $r['emailusername'] : '';
+			$mailer->Password = isset($r['emailpassword']) ? $r['emailpassword'] : '';
 		}
 	}
 	else//mail函数
 	{
 		$mailer->IsMail();
 	}
-	$mailer->From=$r['fromemail'];
-	$mailer->FromName=$r['emailname'];
+	$mailer->From=$r_fromemail;
+	$mailer->FromName=$r_emailname;
 	$mailer->IsHTML(true);
 	$mailer->Subject=stripSlashes($title);//标题
 	$mailer->Body=stripSlashes(nl2br(RepFieldtextNbsp($msgtext)));//内容
-	//$mailer->CharSet("gbk");
-	$mailer->CharSet=$ecms_config['sets']['pagechar']?$ecms_config['sets']['pagechar']:'gbk';
+	
+	$charFromConfig = $ecms_config['sets']['pagechar'] ?? null;
+	$mailer->CharSet = $charFromConfig ?: 'gbk'; // Use 'gbk' if config value is null or empty
 	return $mailer;
 }
 

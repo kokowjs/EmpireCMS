@@ -2,50 +2,67 @@
 //修改采集信息
 function EditCjNews($add,$newstext,$userid,$username){
 	global $empire,$class_r,$dbtbpre,$public_r;
-	$add[classid]=(int)$add[classid];
-	$add[id]=(int)$add[id];
-	if(empty($add[classid])||empty($add[id])||empty($add[title]))
+	$add_classid = (int)($add['classid'] ?? 0);
+	$add_id = (int)($add['id'] ?? 0);
+	$add_title = $add['title'] ?? '';
+
+	if(empty($add_classid)||empty($add_id)||empty($add_title))
 	{printerror("EmptyCjTitle","history.go(-1)");}
 	//验证权限
-	CheckLevel($userid,$username,$classid,"cj");
+	CheckLevel($userid,$username,$add_classid,"cj"); // Use $add_classid for CheckLevel
 	//取得采集字段
 	$record="<!--record-->";
 	$field="<!--field--->";
-	$cr=$empire->fetch1("select newsclassid,tbname from {$dbtbpre}enewsinfoclass where classid='$add[classid]'");
-	$r=$empire->fetch1("select cj from {$dbtbpre}enewsmod where mid='".$class_r[$cr[newsclassid]][modid]."'");
-	$cjr=explode($record,$r[cj]);
+	$cr=$empire->fetch1("select newsclassid,tbname from {$dbtbpre}enewsinfoclass where classid='$add_classid'");
+	if (!$cr) { printerror("DbError","history.go(-1)"); }
+
+	$cr_newsclassid = $cr['newsclassid'] ?? 0;
+	$cr_tbname = $cr['tbname'] ?? '';
+	$modid = $class_r[$cr_newsclassid]['modid'] ?? 0;
+
+	$r=$empire->fetch1("select cj from {$dbtbpre}enewsmod where mid='".$modid."'");
+	if (!$r) { printerror("DbError","history.go(-1)"); }
+	
+	$cjr=explode($record, (string)($r['cj'] ?? ''));
 	$count=count($cjr);
 	$update="";
+	$filedeftb = $public_r['filedeftb'] ?? 1;
+
 	for($i=0;$i<$count-1;$i++)
 	{
 		$cjr1=explode($field,$cjr[$i]);
+		if(!isset($cjr1[1])) { continue; } // Skip if format is wrong
 		$dofield=$cjr1[1];
+		
 		//图片集
 		if($dofield=="morepic")
 		{
-			$add[$dofield]=ReturnMorepicpath($add['msmallpic'],$add['mbigpic'],$add['mpicname'],$add['mdelpicid'],$add['mpicid'],$add,$add['mpicurl_qz'],1,0,$public_r['filedeftb']);
+			$add[$dofield]=ReturnMorepicpath($add['msmallpic'] ?? null,$add['mbigpic'] ?? null,$add['mpicname'] ?? null,$add['mdelpicid'] ?? null,$add['mpicid'] ?? null,$add,$add['mpicurl_qz'] ?? null,1,0,$filedeftb);
 		}
 		//下载地址
-		if($dofield=="downpath")
+		elseif($dofield=="downpath")
 		{
-			$add[$dofield]=ReturnDownpath($add['downname'],$add['downpath'],$add['delpathid'],$add['pathid'],$add['downuser'],$add['fen'],$add['thedownqz'],$add,$add['foruser'],$add['downurl'],0);
+			$add[$dofield]=ReturnDownpath($add['downname'] ?? null,$add['downpath'] ?? null,$add['delpathid'] ?? null,$add['pathid'] ?? null,$add['downuser'] ?? null,$add['fen'] ?? null,$add['thedownqz'] ?? null,$add,$add['foruser'] ?? null,$add['downurl'] ?? null,0);
 		}
 		//在线地址
-		if($dofield=="onlinepath")
+		elseif($dofield=="onlinepath")
 		{
-			$add[$dofield]=ReturnDownpath($add['odownname'],$add['odownpath'],$add['odelpathid'],$add['opathid'],$add['odownuser'],$add['ofen'],$add['othedownqz'],$add,$add['oforuser'],$add['onlineurl_qz'],1);
+			$add[$dofield]=ReturnDownpath($add['odownname'] ?? null,$add['odownpath'] ?? null,$add['odelpathid'] ?? null,$add['opathid'] ?? null,$add['odownuser'] ?? null,$add['ofen'] ?? null,$add['othedownqz'] ?? null,$add,$add['oforuser'] ?? null,$add['onlineurl_qz'] ?? null,1);
 		}
 		//发布时间
-		if($dofield=="newstime")
+		elseif($dofield=="newstime")
 		{continue;}
-		$update.=",".$dofield."='".eaddslashes2($add[$dofield])."'";
+		
+		$update.=",".$dofield."='".eaddslashes2($add[$dofield] ?? '')."'";
 	}
-	$sql=$empire->query("update {$dbtbpre}ecms_infotmp_".$cr[tbname]." set keyboard='".eaddslashes2($add[keyboard])."',newstime='$add[newstime]'".$update." where id='$add[id]'");
+	$add_keyboard = $add['keyboard'] ?? '';
+	$add_newstime_val = $add['newstime'] ?? ''; // Renamed to avoid conflict with $add['newstime'] in loop
+	$sql=$empire->query("update {$dbtbpre}ecms_infotmp_".$cr_tbname." set keyboard='".eaddslashes2($add_keyboard)."',newstime='$add_newstime_val'".$update." where id='$add_id'");
 	if($sql)
 	{
 		//操作日志
-		insert_dolog("id=".$add[id]."<br>title=".$add[title]);
-		printerror("EditCjNewsSuccess","CheckCj.php?classid=$add[classid]&from=".ehtmlspecialchars($_POST[from]).hReturnEcmsHashStrHref2(0));
+		insert_dolog("id=".$add_id."<br>title=".$add_title);
+		printerror("EditCjNewsSuccess","CheckCj.php?classid=$add_classid&from=".(ehtmlspecialchars($_POST['from'] ?? '')).hReturnEcmsHashStrHref2(0));
 	}
 	else
 	{printerror("DbError","history.go(-1)");}
@@ -54,20 +71,22 @@ function EditCjNews($add,$newstext,$userid,$username){
 //删除采集信息
 function DelCjNews($classid,$id,$userid,$username){
 	global $empire,$dbtbpre;
-	$classid=(int)$classid;
-	$id=(int)$id;
-	if(empty($classid)||empty($id))
+	$classid_int=(int)$classid; // Use a different variable name for the casted value
+	$id_int=(int)$id;
+	if(empty($classid_int)||empty($id_int))
 	{printerror("NotDelCjNewsid","history.go(-1)");}
 	//验证权限
-	CheckLevel($userid,$username,$classid,"cj");
-	$cr=$empire->fetch1("select newsclassid,tbname from {$dbtbpre}enewsinfoclass where classid='$classid'");
-	$r=$empire->fetch1("select title from {$dbtbpre}ecms_infotmp_".$cr[tbname]." where id='$id'");
-	$sql=$empire->query("delete from {$dbtbpre}ecms_infotmp_".$cr[tbname]." where id='$id'");
+	CheckLevel($userid,$username,$classid_int,"cj");
+	$cr=$empire->fetch1("select newsclassid,tbname from {$dbtbpre}enewsinfoclass where classid='$classid_int'");
+	if (!$cr) { printerror("DbError","history.go(-1)"); }
+	$cr_tbname_del = $cr['tbname'] ?? '';
+	$r=$empire->fetch1("select title from {$dbtbpre}ecms_infotmp_".$cr_tbname_del." where id='$id_int'");
+	$sql=$empire->query("delete from {$dbtbpre}ecms_infotmp_".$cr_tbname_del." where id='$id_int'");
 	if($sql)
 	{
 		//操作日志
-		insert_dolog("id=".$id."<br>title=".$r[title]);
-		printerror("DelCjNewsSuccess","CheckCj.php?classid=$classid&from=".ehtmlspecialchars($_GET[from]).hReturnEcmsHashStrHref2(0));
+		insert_dolog("id=".$id_int."<br>title=".($r['title'] ?? ''));
+		printerror("DelCjNewsSuccess","CheckCj.php?classid=$classid_int&from=".(ehtmlspecialchars($_GET['from'] ?? '')).hReturnEcmsHashStrHref2(0));
 	}
 	else
 	{printerror("DbError","history.go(-1)");}
@@ -78,21 +97,28 @@ function DelCjNews_all($classid,$id,$userid,$username){
 	global $empire,$dbtbpre;
 	//操作权限
 	CheckLevel($userid,$username,$classid,"cj");
-	$count=count($id);
-	if(!$count)
+	$id_count=count($id); // Use a different variable name
+	if(!$id_count)
 	{printerror("NotDelCjNewsid","history.go(-1)");}
 	$cr=$empire->fetch1("select newsclassid,tbname,classname from {$dbtbpre}enewsinfoclass where classid='$classid'");
-	for($i=0;$i<count($id);$i++)
+	if (!$cr) { printerror("DbError","history.go(-1)"); }
+	$cr_tbname_delall = $cr['tbname'] ?? '';
+	$cr_classname_delall = $cr['classname'] ?? '';
+	
+	$del_add_all = ''; // Initialize
+	for($i=0;$i<$id_count;$i++) // Use $id_count
 	{
-		$add.="id='".$id[$i]."' or ";
+		$del_add_all.="id='".((int)$id[$i])."' or "; // Cast id to int for safety
     }
 	//去掉最后一个 or
-	$add=substr($add,0,strlen($add)-4);
-	$sql=$empire->query("delete from {$dbtbpre}ecms_infotmp_".$cr[tbname]." where ".$add);
+	$del_add_all=substr($del_add_all,0,strlen($del_add_all)-4);
+	if(empty($del_add_all)){ printerror("NotDelCjNewsid","history.go(-1)"); }
+
+	$sql=$empire->query("delete from {$dbtbpre}ecms_infotmp_".$cr_tbname_delall." where ".$del_add_all);
 	if($sql)
 	{
 		//操作日志
-	    insert_dolog("classid=".$classid."<br>classname=".$cr[classname]);
+	    insert_dolog("classid=".$classid."<br>classname=".$cr_classname_delall);
 		printerror("DelCjNewsAllSuccess",EcmsGetReturnUrl());
     }
 	else
@@ -112,42 +138,50 @@ function DoClearSmalltextVal($value){
 //采集入库
 function CjNewsIn($classid,$id,$checked,$uptime,$userid,$username){
 	global $class_r,$empire,$public_r,$dbtbpre,$emod_r,$lur;
-	$checked=(int)$checked;
-	$classid=(int)$classid;
-	if(empty($classid))
+	$checked_int=(int)$checked;
+	$classid_int=(int)$classid;
+	if(empty($classid_int))
 	{
 		printerror("ErrorUrl","history.go(-1)");
 	}
-	CheckLevel($userid,$username,$classid,"cj");//操作权限
-	$count=count($id);
-	if(empty($count))
+	CheckLevel($userid,$username,$classid_int,"cj");//操作权限
+	$id_count=count($id); // Use a different variable name
+	if(empty($id_count))
 	{
 		printerror("NotCjNewsIn","history.go(-1)");
 	}
-	$cr=$empire->fetch1("select * from {$dbtbpre}enewsinfoclass where classid='$classid'");
+	$cr=$empire->fetch1("select * from {$dbtbpre}enewsinfoclass where classid='$classid_int'");
+	if (!$cr) { printerror("DbError","history.go(-1)"); }
+	$cr_tbname_in = $cr['tbname'] ?? '';
 	//副表
-	$cra=$empire->fetch1("select * from {$dbtbpre}ecms_infoclass_".$cr[tbname]." where classid='$classid'");
+	$cra=$empire->fetch1("select * from {$dbtbpre}ecms_infoclass_".$cr_tbname_in." where classid='$classid_int'");
 	//组合两数组
-    $cr=TogTwoArray($cr,$cra);
+    $cr=TogTwoArray($cr, (is_array($cra) ? $cra : array()) ); // Ensure $cra is an array
 	//导入gd处理文件
-	if($cr['mark']||$cr['getfirstspic'])
+	if(!empty($cr['mark'])||!empty($cr['getfirstspic'])) // Check if not empty
 	{
 		@include_once("gd.php");
 	}
-	$userisqf=EcmsReturnDoIsqf($userid,$username,$lur['groupid'],0);
-	$mid=$class_r[$cr[newsclassid]][modid];
-	$savetxtf=$emod_r[$mid]['savetxtf'];
-	$stb=$emod_r[$mid]['deftb'];
+	$lur_groupid = $lur['groupid'] ?? 0;
+	$userisqf=EcmsReturnDoIsqf($userid,$username,$lur_groupid,0);
+	
+	$cr_newsclassid_in = $cr['newsclassid'] ?? 0;
+	$mid = $class_r[$cr_newsclassid_in]['modid'] ?? 0;
+	$savetxtf = $emod_r[$mid]['savetxtf'] ?? '';
+	$stb = $emod_r[$mid]['deftb'] ?? 1;
+	
 	//取得采集字段
 	$record="<!--record-->";
 	$field="<!--field--->";
-	$mr=$empire->fetch1("select cj from {$dbtbpre}enewsmod where mid='".$class_r[$cr[newsclassid]][modid]."'");
-	$cjr=explode($record,$mr[cj]);
+	$mr=$empire->fetch1("select cj from {$dbtbpre}enewsmod where mid='".($class_r[$cr_newsclassid_in]['modid'] ?? 0)."'");
+	$cjr=explode($record, (string)($mr['cj'] ?? ''));
 	$ccount=count($cjr);
 	//取得优化字段
+	$updatefield=''; // Initialize
 	for($ci=0;$ci<$ccount-1;$ci++)
 	{
 		$cir=explode($field,$cjr[$ci]);
+		if(!isset($cir[1])) { continue; }
 		$cifield=$cir[1];
 		if($cifield=="title")
 		{
@@ -155,13 +189,16 @@ function CjNewsIn($classid,$id,$checked,$uptime,$userid,$username){
 		}
 		$updatefield.=",".$cifield."=''";
 	}
-	for($i=0;$i<count($id);$i++)
+	$a_in = ''; // Initialize
+	for($i=0;$i<$id_count;$i++) // Use $id_count
 	{
-		$a.="id='".$id[$i]."' or ";
+		$a_in.="id='".((int)$id[$i])."' or "; // Cast id to int
 	}
 	//去掉最后一个 or
-	$a=substr($a,0,strlen($a)-4);
-	$sql=$empire->query("select * from {$dbtbpre}ecms_infotmp_".$cr[tbname]." where ".$a." and checked=0 order by id desc");
+	$a_in=substr($a_in,0,strlen($a_in)-4);
+	if(empty($a_in)){ printerror("NotCjNewsIn","history.go(-1)"); }
+
+	$sql=$empire->query("select * from {$dbtbpre}ecms_infotmp_".$cr_tbname_in." where ".$a_in." and checked=0 order by id desc");
 	$todaytime=time();
 	$filetime=$todaytime;
 	while($r=$empire->fetch($sql))
@@ -188,20 +225,20 @@ function CjNewsIn($classid,$id,$checked,$uptime,$userid,$username){
 			//内容
 			if($dofield=="newstext")
 			{
-				if($cr[copyimg]||$cr[copyflash])
+				if(!empty($cr['copyimg'])||!empty($cr['copyflash']))
 				{
-					$GLOBALS['cjnewsurl']=$r[oldurl];
-					$value=addslashes(CopyImg(stripSlashes($value),$cr[copyimg],$cr[copyflash],$cr[newsclassid],$cr[imgurl],$username,0,$r['id'],$cr['mark'],$public_r['filedeftb']));
+					$GLOBALS['cjnewsurl']=$r['oldurl'] ?? '';
+					$value=addslashes(CopyImg(stripSlashes($value),($cr['copyimg'] ?? 0),($cr['copyflash'] ?? 0),($cr['newsclassid'] ?? 0),($cr['imgurl'] ?? ''),$username,0,($r['id'] ?? 0),($cr['mark'] ?? 0),($public_r['filedeftb'] ?? 1)));
 				}
 				//替换关键字和字符
-				$value=DoReplaceKeyAndWord($value,1,$cr[newsclassid]);
+				$value=DoReplaceKeyAndWord($value,1,($cr['newsclassid'] ?? 0));
 			}
 			//简介
 			if($dofield=="smalltext")
 			{
 				if(empty($value))
 				{
-					$value=SubSmalltextVal($r[newstext],$cr[smalltextlen]);
+					$value=SubSmalltextVal(($r['newstext'] ?? ''),($cr['smalltextlen'] ?? 0));
 				}
 				else
 				{
@@ -211,40 +248,40 @@ function CjNewsIn($classid,$id,$checked,$uptime,$userid,$username){
 			//图片集
 			if($dofield=="morepic")
 			{
-				if($cr[$var3]==" checked")
+				if(($cr[$var3] ?? '') ==" checked")
 				{
 					$msavepic=1;
-					$r['filepass']=$r['id'];
-					$value=LoadInSaveMorepicFile($value,$msavepic,$cr[newsclassid],0,$r,0,$public_r['filedeftb']);
+					$r['filepass']=$r['id'] ?? 0;
+					$value=LoadInSaveMorepicFile($value,$msavepic,($cr['newsclassid'] ?? 0),0,$r,0,($public_r['filedeftb'] ?? 1));
 				}
 			}
 			//信息时间
 			if($dofield=="newstime")
 			{continue;}
 			//图片标题
-			if($dofield=="titlepic"&&$cr[zz_titlepicl])
+			if($dofield=="titlepic" && !empty($cr['zz_titlepicl']))
 			{
-				$cr[$var]=$cr[zz_titlepicl];
-				$cr[$var1]=$cr[z_titlepicl];
-				$cr[$var2]=$cr[qz_titlepicl];
-				$cr[$var3]=$cr[save_titlepicl];
+				$cr[$var]=$cr['zz_titlepicl'];
+				$cr[$var1]=$cr['z_titlepicl'] ?? '';
+				$cr[$var2]=$cr['qz_titlepicl'] ?? '';
+				$cr[$var3]=$cr['save_titlepicl'] ?? '';
 			}
 			if($dofield=="titlepic"&&empty($value))
 			{
 				$titlepicnoval=1;
 			}
 			//是否远程保存
-			if($value&&!$cr[$var1]&&$cr[$var3]==" checked"&&$dofield!="morepic")
+			if($value && empty($cr[$var1] ?? null) && ($cr[$var3] ?? '') ==" checked" && $dofield!="morepic")
 			{
-				$tranr=DoTranUrl($value,$cr[newsclassid]);
-				if($tranr[tran])
+				$tranr=DoTranUrl($value,($cr['newsclassid'] ?? 0));
+				if(!empty($tranr['tran']))
 				{
-					$tranr[filesize]=(int)$tranr[filesize];
-					$tranr[type]=(int)$tranr[type];
-					$r[id]=(int)$r[id];
+					$tranr_filesize=(int)($tranr['filesize'] ?? 0);
+					$tranr_type=(int)($tranr['type'] ?? 0);
+					$r_id_int=(int)($r['id'] ?? 0);
 					//记录数据库
-					eInsertFileTable($tranr[filename],$tranr[filesize],$tranr[filepath],$username,$cr[newsclassid],'[URL]'.$tranr[filename],$tranr[type],0,$r[id],$public_r[fpath],0,0,$public_r['filedeftb']);
-					$value=$tranr[url];
+					eInsertFileTable(($tranr['filename'] ?? ''),$tranr_filesize,($tranr['filepath'] ?? ''),$username,($cr['newsclassid'] ?? 0),'[URL]'.($tranr['filename'] ?? ''),$tranr_type,0,$r_id_int,($public_r['fpath'] ?? 1),0,0,($public_r['filedeftb'] ?? 1));
+					$value=$tranr['url'] ?? '';
 				}
 			}
 			//存放文本
@@ -258,7 +295,7 @@ function CjNewsIn($classid,$id,$checked,$uptime,$userid,$username){
 				$value=$truevalue;
 			}
 			$value=addslashes($value);
-			if(strstr($emod_r[$mid]['tbdataf'],','.$dofield.','))//副表
+			if(strstr(($emod_r[$mid]['tbdataf'] ?? ''),','.$dofield.','))//副表
 			{
 				$dataifield.=",".$dofield;
 				$dataivalue.=",'".$value."'";
@@ -269,141 +306,159 @@ function CjNewsIn($classid,$id,$checked,$uptime,$userid,$username){
 				$ivalue.=",'".$value."'";
 			}
 		}
-		$r[keyboard]=addslashes($r[keyboard]);
+		$r_keyboard_in = addslashes($r['keyboard'] ?? '');
+		$r_newstime_in = $r['newstime'] ?? '';
+		$r_truetime_in = $r['truetime'] ?? '';
 		//时间
 		if($uptime)//当前时间
 		{
-			$r[newstime]=$todaytime;
-			$r[truetime]=$todaytime;
+			$r_newstime_in=$todaytime;
+			$r_truetime_in=$todaytime;
 		}
 		else
 		{
-			if($r[newstime]=="0000-00-00 00:00:00")
+			if(empty($r_newstime_in) || $r_newstime_in=="0000-00-00 00:00:00")
 			{
-				$r[newstime]=$todaytime;
+				$r_newstime_in=$todaytime;
 			}
 			else
 			{
-				$r[newstime]=to_time($r[newstime]);
+				$r_newstime_in=to_time($r_newstime_in);
 			}
 		}
 		//查看目录是否存在，不存在则建立
-		$newspath=FormatPath($cr[newsclassid],"",0);
+		$cr_newsclassid_in_loop = $cr['newsclassid'] ?? 0;
+		$newspath=FormatPath($cr_newsclassid_in_loop,"",0);
 		//强制签发
-		if($class_r[$cr[newsclassid]][wfid])
+		$current_checked_in = $checked_int;
+		if(!empty($class_r[$cr_newsclassid_in_loop]['wfid']))
 		{
 			if($userisqf)
 			{
-				$checked=$checked;
 				$isqf=0;
 			}
 			else
 			{
-				$checked=0;
+				$current_checked_in=0;
 				$isqf=1;
 			}
 		}
 		else
 		{
-			$checked=$checked;
 			$isqf=0;
 		}
 		//变量处理
 		$newstempid=0;
-		$ispic=$r[titlepic]?1:0;
+		$ispic=($r['titlepic'] ?? '') ? 1:0;
 		//取得返回关键字
-		$keyid=GetKeyid($r[keyboard],$cr[newsclassid],0,$class_r[$cr[newsclassid]][link_num]);
+		$keyid=GetKeyid($r_keyboard_in,$cr_newsclassid_in_loop,0,($class_r[$cr_newsclassid_in_loop]['link_num'] ?? 0));
 		//索引表
 		$havehtml=0;
-		$indexsql=$empire->query("insert into {$dbtbpre}ecms_".$class_r[$cr[newsclassid]][tbname]."_index(classid,checked,newstime,truetime,lastdotime,havehtml) values('$cr[newsclassid]','$checked','$r[newstime]','$r[truetime]','$r[truetime]','$havehtml');");
-		$id=$empire->lastid();
-		$infotbr=ReturnInfoTbname($class_r[$cr[newsclassid]][tbname],$checked,$stb);
+		$tbname_index_in = $class_r[$cr_newsclassid_in_loop]['tbname'] ?? '';
+		$indexsql=$empire->query("insert into {$dbtbpre}ecms_".$tbname_index_in."_index(classid,checked,newstime,truetime,lastdotime,havehtml) values('$cr_newsclassid_in_loop','$current_checked_in','$r_newstime_in','$r_truetime_in','$r_truetime_in','$havehtml');");
+		$last_id_in=$empire->lastid();
+		$infotbr=ReturnInfoTbname($tbname_index_in,$current_checked_in,$stb);
 		//主表
-		$isurl=$r['titleurl']?1:0;
-		$isql=$empire->query("insert into ".$infotbr['tbname']."(id,classid,ttid,onclick,plnum,totaldown,newspath,filename,userid,username,firsttitle,isgood,ispic,istop,isqf,ismember,isurl,truetime,lastdotime,havehtml,groupid,userfen,titlefont,titleurl,stb,fstb,restb,keyboard,newstime".$ifield.") values('$id','$cr[newsclassid]',0,0,0,0,'$newspath','$filename','$r[userid]','$r[username]',0,0,'$ispic',0,'$isqf',0,'$isurl','$r[truetime]','$r[truetime]','$havehtml',0,0,'$r[titlefont]','$r[titleurl]','$stb','$public_r[filedeftb]','$public_r[pldeftb]','$r[keyboard]','$r[newstime]'".$ivalue.");");
+		$isurl=($r['titleurl'] ?? '')?1:0;
+		$filedeftb_in_main = $public_r['filedeftb'] ?? 1;
+		$pldeftb_in_main = $public_r['pldeftb'] ?? 1;
+		$r_userid_in = $r['userid'] ?? 0;
+		$r_username_in = $r['username'] ?? '';
+		$r_titlefont_in = $r['titlefont'] ?? '';
+		$r_titleurl_in = $r['titleurl'] ?? '';
+
+		$isql=$empire->query("insert into ".$infotbr['tbname']."(id,classid,ttid,onclick,plnum,totaldown,newspath,filename,userid,username,firsttitle,isgood,ispic,istop,isqf,ismember,isurl,truetime,lastdotime,havehtml,groupid,userfen,titlefont,titleurl,stb,fstb,restb,keyboard,newstime".$ifield.") values('$last_id_in','$cr_newsclassid_in_loop',0,0,0,0,'$newspath','',/*filename empty initially*/'$r_userid_in','$r_username_in',0,0,'$ispic',0,'$isqf',0,'$isurl','$r_truetime_in','$r_truetime_in','$havehtml',0,0,'$r_titlefont_in','$r_titleurl_in','$stb','$filedeftb_in_main','$pldeftb_in_main','$r_keyboard_in','$r_newstime_in'".$ivalue.");");
 		//副表
-		$fisql=$empire->query("insert into ".$infotbr['datatbname']."(id,classid,keyid,dokey,newstempid,closepl,haveaddfen,infotags".$dataifield.") values('$id','$cr[newsclassid]','$keyid',1,'$newstempid',0,0,''".$dataivalue.");");
+		$fisql=$empire->query("insert into ".$infotbr['datatbname']."(id,classid,keyid,dokey,newstempid,closepl,haveaddfen,infotags".$dataifield.") values('$last_id_in','$cr_newsclassid_in_loop','$keyid',1,'$newstempid',0,0,''".$dataivalue.");");
 		//更新栏目信息数
-		AddClassInfos($cr['newsclassid'],'+1','+1',$checked);
+		AddClassInfos($cr_newsclassid_in_loop,'+1','+1',$current_checked_in);
 		//更新新信息数
-		DoUpdateAddDataNum('info',$class_r[$cr['newsclassid']]['tid'],1);
+		DoUpdateAddDataNum('info',($class_r[$cr_newsclassid_in_loop]['tid'] ?? 0),1);
 		//签发
 		if($isqf==1)
 		{
-			InfoInsertToWorkflow($id,$cr[newsclassid],$class_r[$cr[newsclassid]][wfid],$userid,$username);
+			InfoInsertToWorkflow($last_id_in,$cr_newsclassid_in_loop,($class_r[$cr_newsclassid_in_loop]['wfid'] ?? 0),$userid,$username);
 		}
 		//更新附件
-		UpdateTheFile($id,$r['id'],$cr['newsclassid'],$public_r['filedeftb']);
+		UpdateTheFile($last_id_in,($r['id'] ?? 0),$cr_newsclassid_in_loop,($public_r['filedeftb'] ?? 1));
 		//取第一张图片为标题图片
 		$addtitlepic="";
-		if($cr['getfirstpic']&&$titlepicnoval)
+		if(!empty($cr['getfirstpic']) && $titlepicnoval)
 		{
-			$firsttitlepic=GetFpicToTpic($cr[newsclassid],$id,$cr['getfirstpic'],$cr['getfirstspic'],$cr['getfirstspicw'],$cr['getfirstspich'],$public_r['filedeftb']);
+			$filedeftb_fpic_in = $public_r['filedeftb'] ?? 1;
+			$firsttitlepic=GetFpicToTpic($cr_newsclassid_in_loop,$last_id_in,($cr['getfirstpic'] ?? 0),($cr['getfirstspic'] ?? 0),($cr['getfirstspicw'] ?? 0),($cr['getfirstspich'] ?? 0),$filedeftb_fpic_in);
 			if($firsttitlepic)
 			{
 				$addtitlepic=",titlepic='".addslashes($firsttitlepic)."',ispic=1";
 			}
 		}
 		//文件命名
-		$filename=ReturnInfoFilename($cr[newsclassid],$id,$r[filenameqz]);
+		$filename=ReturnInfoFilename($cr_newsclassid_in_loop,$last_id_in,($r['filenameqz'] ?? ''));
 		//信息地址
 		$updateinfourl='';
 		if(!$isurl)
 		{
-			$infourl=GotoGetTitleUrl($cr['newsclassid'],$id,$newspath,$filename,0,$isurl,'');
+			$infourl=GotoGetTitleUrl($cr_newsclassid_in_loop,$last_id_in,$newspath,$filename,0,$isurl,'');
 			$updateinfourl=",titleurl='$infourl'";
 		}
-        $usql=$empire->query("update ".$infotbr['tbname']." set filename='$filename'".$updateinfourl.$addtitlepic." where id='$id'");
+        $usql=$empire->query("update ".$infotbr['tbname']." set filename='$filename'".$updateinfourl.$addtitlepic." where id='$last_id_in'");
 	}
 	//状态原记录
-	if($cr['delloadinfo'])//删除
+	if(!empty($cr['delloadinfo']))//删除
 	{
-		$del=$empire->query("delete from {$dbtbpre}ecms_infotmp_".$cr[tbname]." where ".$a);
+		$del=$empire->query("delete from {$dbtbpre}ecms_infotmp_".$cr_tbname_in." where ".$a_in);
 	}
 	else
 	{
-		$del=$empire->query("update {$dbtbpre}ecms_infotmp_".$cr[tbname]." set checked=1,keyboard=''".$updatefield." where ".$a);
+		$del=$empire->query("update {$dbtbpre}ecms_infotmp_".$cr_tbname_in." set checked=1,keyboard=''".$updatefield." where ".$a_in);
 	}
 	//操作日志
-	insert_dolog("classid=".$classid);
-	printerror("CjLoadDbSuccess","CheckCj.php?classid=$classid&from=".ehtmlspecialchars($_POST[from]).hReturnEcmsHashStrHref2(0));
+	insert_dolog("classid=".$classid_int);
+	printerror("CjLoadDbSuccess","CheckCj.php?classid=$classid_int&from=".(ehtmlspecialchars($_POST['from'] ?? '')).hReturnEcmsHashStrHref2(0));
 }
 
 //全部采集入库
 function CjNewsIn_all($classid,$checked,$uptime,$start,$userid,$username){
 	global $class_r,$empire,$public_r,$dbtbpre,$fun_r,$emod_r,$lur;
-	$checked=(int)$checked;
-	$classid=(int)$classid;
-	$start=(int)$start;
-	if(empty($classid))
+	$checked_int=(int)$checked; // Use different var names for casted values
+	$classid_int=(int)$classid;
+	$start_int=(int)$start;
+	if(empty($classid_int))
 	{
 		printerror("ErrorUrl","history.go(-1)");
 	}
 	//操作权限
-	CheckLevel($userid,$username,$classid,"cj");
-	$cr=$empire->fetch1("select * from {$dbtbpre}enewsinfoclass where classid='$classid'");
+	CheckLevel($userid,$username,$classid_int,"cj");
+	$cr=$empire->fetch1("select * from {$dbtbpre}enewsinfoclass where classid='$classid_int'");
+	if (!$cr) { printerror("DbError","history.go(-1)"); }
+	$cr_tbname_all = $cr['tbname'] ?? '';
 	//副表
-	$cra=$empire->fetch1("select * from {$dbtbpre}ecms_infoclass_".$cr[tbname]." where classid='$classid'");
+	$cra=$empire->fetch1("select * from {$dbtbpre}ecms_infoclass_".$cr_tbname_all." where classid='$classid_int'");
 	//组合两数组
-    $cr=TogTwoArray($cr,$cra);
+    $cr=TogTwoArray($cr, (is_array($cra) ? $cra : array()) );
 	//导入gd处理文件
-	if($cr['mark']||$cr['getfirstspic'])
+	if(!empty($cr['mark'])||!empty($cr['getfirstspic']))
 	{
 		@include_once("gd.php");
 	}
-	$userisqf=EcmsReturnDoIsqf($userid,$username,$lur['groupid'],0);
-	if(empty($cr[insertnum]))
-	{$cr[insertnum]=10;}
-	$mid=$class_r[$cr[newsclassid]][modid];
-	$savetxtf=$emod_r[$mid]['savetxtf'];
-	$stb=$emod_r[$mid]['deftb'];
+	$lur_groupid_all = $lur['groupid'] ?? 0;
+	$userisqf=EcmsReturnDoIsqf($userid,$username,$lur_groupid_all,0);
+	
+	$cr_insertnum = (int)($cr['insertnum'] ?? 10);
+	if(empty($cr_insertnum)) {$cr_insertnum=10;}
+
+	$cr_newsclassid_all_loop = $cr['newsclassid'] ?? 0;
+	$mid_all = $class_r[$cr_newsclassid_all_loop]['modid'] ?? 0;
+	$savetxtf_all = $emod_r[$mid_all]['savetxtf'] ?? '';
+	$stb_all = $emod_r[$mid_all]['deftb'] ?? 1;
+	
 	//取得采集字段
 	$record="<!--record-->";
 	$field="<!--field--->";
-	$mr=$empire->fetch1("select cj from {$dbtbpre}enewsmod where mid='".$class_r[$cr[newsclassid]][modid]."'");
-	$cjr=explode($record,$mr[cj]);
+	$mr=$empire->fetch1("select cj from {$dbtbpre}enewsmod where mid='".($class_r[$cr_newsclassid_all_loop]['modid'] ?? 0)."'");
+	$cjr=explode($record, (string)($mr['cj'] ?? ''));
 	$ccount=count($cjr);
-	$sql=$empire->query("select * from {$dbtbpre}ecms_infotmp_".$cr[tbname]." where classid='$classid' and checked=0 and id>$start order by id limit ".$cr[insertnum]);
+	$sql=$empire->query("select * from {$dbtbpre}ecms_infotmp_".$cr_tbname_all." where classid='$classid_int' and checked=0 and id>$start_int order by id limit ".$cr_insertnum);
 	$todaytime=time();
 	$filetime=$todaytime;
 	$b=0;
@@ -433,20 +488,20 @@ function CjNewsIn_all($classid,$checked,$uptime,$start,$userid,$username){
 			//内容
 			if($dofield=="newstext")
 			{
-				if($cr[copyimg]||$cr[copyflash])
+				if(!empty($cr['copyimg'])||!empty($cr['copyflash']))
 				{
-					$GLOBALS['cjnewsurl']=$r[oldurl];
-					$value=addslashes(CopyImg(stripSlashes($value),$cr[copyimg],$cr[copyflash],$cr[newsclassid],$cr[imgurl],$username,0,$r['id'],$cr['mark'],$public_r['filedeftb']));
+					$GLOBALS['cjnewsurl']=$r['oldurl'] ?? '';
+					$value=addslashes(CopyImg(stripSlashes($value),($cr['copyimg'] ?? 0),($cr['copyflash'] ?? 0),($cr['newsclassid'] ?? 0),($cr['imgurl'] ?? ''),$username,0,($r['id'] ?? 0),($cr['mark'] ?? 0),($public_r['filedeftb'] ?? 1)));
 				}
 				//替换关键字和字符
-				$value=DoReplaceKeyAndWord($value,1,$cr[newsclassid]);
+				$value=DoReplaceKeyAndWord($value,1,($cr['newsclassid'] ?? 0));
 			}
 			//简介
 			if($dofield=="smalltext")
 			{
 				if(empty($value))
 				{
-					$value=SubSmalltextVal($r[newstext],$cr[smalltextlen]);
+					$value=SubSmalltextVal(($r['newstext'] ?? ''),($cr['smalltextlen'] ?? 0));
 				}
 				else
 				{
@@ -456,44 +511,44 @@ function CjNewsIn_all($classid,$checked,$uptime,$start,$userid,$username){
 			//图片集
 			if($dofield=="morepic")
 			{
-				if($cr[$var3]==" checked")
+				if(($cr[$var3] ?? '') ==" checked")
 				{
 					$msavepic=1;
-					$r['filepass']=$r['id'];
-					$value=LoadInSaveMorepicFile($value,$msavepic,$cr[newsclassid],0,$r,0,$public_r['filedeftb']);
+					$r['filepass']=$r['id'] ?? 0;
+					$value=LoadInSaveMorepicFile($value,$msavepic,($cr['newsclassid'] ?? 0),0,$r,0,($public_r['filedeftb'] ?? 1));
 				}
 			}
 			//时间
 			if($dofield=="newstime")
 			{continue;}
 			//图片标题
-			if($dofield=="titlepic"&&$cr[zz_titlepicl])
+			if($dofield=="titlepic" && !empty($cr['zz_titlepicl']))
 			{
-				$cr[$var]=$cr[zz_titlepicl];
-				$cr[$var1]=$cr[z_titlepicl];
-				$cr[$var2]=$cr[qz_titlepicl];
-				$cr[$var3]=$cr[save_titlepicl];
+				$cr[$var]=$cr['zz_titlepicl'];
+				$cr[$var1]=$cr['z_titlepicl'] ?? '';
+				$cr[$var2]=$cr['qz_titlepicl'] ?? '';
+				$cr[$var3]=$cr['save_titlepicl'] ?? '';
 			}
 			if($dofield=="titlepic"&&empty($value))
 			{
 				$titlepicnoval=1;
 			}
 			//是否远程保存
-			if($value&&!$cr[$var1]&&$cr[$var3]==" checked"&&$dofield!="morepic")
+			if($value && empty($cr[$var1] ?? null) && ($cr[$var3] ?? '') ==" checked" && $dofield!="morepic")
 			{
-				$tranr=DoTranUrl($value,$cr[newsclassid]);
-				if($tranr[tran])
+				$tranr=DoTranUrl($value,($cr['newsclassid'] ?? 0));
+				if(!empty($tranr['tran']))
 				{
-					$tranr[filesize]=(int)$tranr[filesize];
-					$tranr[type]=(int)$tranr[type];
-					$r[id]=(int)$r[id];
+					$tranr_filesize=(int)($tranr['filesize'] ?? 0);
+					$tranr_type=(int)($tranr['type'] ?? 0);
+					$r_id_int=(int)($r['id'] ?? 0);
 					//记录数据库
-					eInsertFileTable($tranr[filename],$tranr[filesize],$tranr[filepath],$username,$cr[newsclassid],'[URL]'.$tranr[filename],$tranr[type],0,$r[id],$public_r[fpath],0,0,$public_r['filedeftb']);
-					$value=$tranr[url];
+					eInsertFileTable(($tranr['filename'] ?? ''),$tranr_filesize,($tranr['filepath'] ?? ''),$username,($cr['newsclassid'] ?? 0),'[URL]'.($tranr['filename'] ?? ''),$tranr_type,0,$r_id_int,($public_r['fpath'] ?? 1),0,0,($public_r['filedeftb'] ?? 1));
+					$value=$tranr['url'] ?? '';
 				}
 			}
 			//存放文本
-			if($savetxtf==$dofield)
+			if($savetxtf_all==$dofield) // Use $savetxtf_all
 			{
 				//建立目录
 				$thetxtfile=GetFileMd5();
@@ -503,7 +558,7 @@ function CjNewsIn_all($classid,$checked,$uptime,$start,$userid,$username){
 				$value=$truevalue;
 			}
 			$value=addslashes($value);
-			if(strstr($emod_r[$mid]['tbdataf'],','.$dofield.','))//副表
+			if(strstr(($emod_r[$mid_all]['tbdataf'] ?? ''),','.$dofield.','))//副表 Use $mid_all
 			{
 				$dataifield.=",".$dofield;
 				$dataivalue.=",'".$value."'";
@@ -514,128 +569,139 @@ function CjNewsIn_all($classid,$checked,$uptime,$start,$userid,$username){
 				$ivalue.=",'".$value."'";
 			}
 		}
-		$r[keyboard]=addslashes($r[keyboard]);
+		$r_keyboard_all_loop = addslashes($r['keyboard'] ?? '');
+		$r_newstime_all_loop = $r['newstime'] ?? '';
+		$r_truetime_all_loop = $r['truetime'] ?? '';
 		//时间
 		if($uptime)//当前时间
 		{
-			$r[newstime]=$todaytime;
-			$r[truetime]=$todaytime;
+			$r_newstime_all_loop=$todaytime;
+			$r_truetime_all_loop=$todaytime;
 		}
 		else
 		{
-			if($r[newstime]=="0000-00-00 00:00:00")
+			if(empty($r_newstime_all_loop) || $r_newstime_all_loop=="0000-00-00 00:00:00")
 			{
-				$r[newstime]=$todaytime;
+				$r_newstime_all_loop=$todaytime;
 			}
 			else
 			{
-				$r[newstime]=to_time($r[newstime]);
+				$r_newstime_all_loop=to_time($r_newstime_all_loop);
 			}
 		}
 		//查看目录是否存在，不存在则建立
-		$newspath=FormatPath($cr[newsclassid],"",0);
+		$newspath=FormatPath($cr_newsclassid_all_loop,"",0);
 		//强制签发
-		if($class_r[$cr[newsclassid]][wfid])
+		$current_checked_all_loop = $checked_int;
+		if(!empty($class_r[$cr_newsclassid_all_loop]['wfid']))
 		{
 			if($userisqf)
 			{
-				$checked=$checked;
 				$isqf=0;
 			}
 			else
 			{
-				$checked=0;
+				$current_checked_all_loop=0;
 				$isqf=1;
 			}
 		}
 		else
 		{
-			$checked=$checked;
 			$isqf=0;
 		}
 		//变量处理
 		$newstempid=0;
-		$ispic=$r[titlepic]?1:0;
+		$ispic=($r['titlepic'] ?? '') ? 1:0;
 		//返回关键字
-		$keyid=GetKeyid($r[keyboard],$cr[newsclassid],0,$class_r[$cr[newsclassid]][link_num]);
+		$keyid=GetKeyid($r_keyboard_all_loop,$cr_newsclassid_all_loop,0,($class_r[$cr_newsclassid_all_loop]['link_num'] ?? 0));
 		//索引表
 		$havehtml=0;
-		$indexsql=$empire->query("insert into {$dbtbpre}ecms_".$class_r[$cr[newsclassid]][tbname]."_index(classid,checked,newstime,truetime,lastdotime,havehtml) values('$cr[newsclassid]','$checked','$r[newstime]','$r[truetime]','$r[truetime]','$havehtml');");
-		$id=$empire->lastid();
-		$infotbr=ReturnInfoTbname($class_r[$cr[newsclassid]][tbname],$checked,$stb);
+		$tbname_index_all_loop = $class_r[$cr_newsclassid_all_loop]['tbname'] ?? '';
+		$indexsql=$empire->query("insert into {$dbtbpre}ecms_".$tbname_index_all_loop."_index(classid,checked,newstime,truetime,lastdotime,havehtml) values('$cr_newsclassid_all_loop','$current_checked_all_loop','$r_newstime_all_loop','$r_truetime_all_loop','$r_truetime_all_loop','$havehtml');");
+		$last_id_all_loop=$empire->lastid();
+		$infotbr=ReturnInfoTbname($tbname_index_all_loop,$current_checked_all_loop,$stb_all); // Use $stb_all
 		//主表
-		$isurl=$r['titleurl']?1:0;
-		$isql=$empire->query("insert into ".$infotbr['tbname']."(id,classid,ttid,onclick,plnum,totaldown,newspath,filename,userid,username,firsttitle,isgood,ispic,istop,isqf,ismember,isurl,truetime,lastdotime,havehtml,groupid,userfen,titlefont,titleurl,stb,fstb,restb,keyboard,newstime".$ifield.") values('$id','$cr[newsclassid]',0,0,0,0,'$newspath','$filename','$r[userid]','$r[username]',0,0,'$ispic',0,'$isqf',0,'$isurl','$r[truetime]','$r[truetime]','$havehtml',0,0,'$r[titlefont]','$r[titleurl]','$stb','$public_r[filedeftb]','$public_r[pldeftb]','$r[keyboard]','$r[newstime]'".$ivalue.");");
+		$isurl=($r['titleurl'] ?? '')?1:0;
+		$filedeftb_all_loop_main = $public_r['filedeftb'] ?? 1;
+		$pldeftb_all_loop_main = $public_r['pldeftb'] ?? 1;
+		$r_userid_all_loop = $r['userid'] ?? 0;
+		$r_username_all_loop = $r['username'] ?? '';
+		$r_titlefont_all_loop = $r['titlefont'] ?? '';
+		$r_titleurl_all_loop = $r['titleurl'] ?? '';
+
+		$isql=$empire->query("insert into ".$infotbr['tbname']."(id,classid,ttid,onclick,plnum,totaldown,newspath,filename,userid,username,firsttitle,isgood,ispic,istop,isqf,ismember,isurl,truetime,lastdotime,havehtml,groupid,userfen,titlefont,titleurl,stb,fstb,restb,keyboard,newstime".$ifield.") values('$last_id_all_loop','$cr_newsclassid_all_loop',0,0,0,0,'$newspath','',/*filename empty initially*/'$r_userid_all_loop','$r_username_all_loop',0,0,'$ispic',0,'$isqf',0,'$isurl','$r_truetime_all_loop','$r_truetime_all_loop','$havehtml',0,0,'$r_titlefont_all_loop','$r_titleurl_all_loop','$stb_all','$filedeftb_all_loop_main','$pldeftb_all_loop_main','$r_keyboard_all_loop','$r_newstime_all_loop'".$ivalue.");");
 		//副表
-		$fisql=$empire->query("insert into ".$infotbr['datatbname']."(id,classid,keyid,dokey,newstempid,closepl,haveaddfen,infotags".$dataifield.") values('$id','$cr[newsclassid]','$keyid',1,'$newstempid',0,0,''".$dataivalue.");");
+		$fisql=$empire->query("insert into ".$infotbr['datatbname']."(id,classid,keyid,dokey,newstempid,closepl,haveaddfen,infotags".$dataifield.") values('$last_id_all_loop','$cr_newsclassid_all_loop','$keyid',1,'$newstempid',0,0,''".$dataivalue.");");
 		//更新栏目信息数
-		AddClassInfos($cr['newsclassid'],'+1','+1',$checked);
+		AddClassInfos($cr_newsclassid_all_loop,'+1','+1',$current_checked_all_loop);
 		//更新新信息数
-		DoUpdateAddDataNum('info',$class_r[$cr['newsclassid']]['tid'],1);
+		DoUpdateAddDataNum('info',($class_r[$cr_newsclassid_all_loop]['tid'] ?? 0),1);
 		//签发
 		if($isqf==1)
 		{
-			InfoInsertToWorkflow($id,$cr[newsclassid],$class_r[$cr[newsclassid]][wfid],$userid,$username);
+			InfoInsertToWorkflow($last_id_all_loop,$cr_newsclassid_all_loop,($class_r[$cr_newsclassid_all_loop]['wfid'] ?? 0),$userid,$username);
 		}
 		//更新附件
-		UpdateTheFile($id,$r['id'],$cr[newsclassid],$public_r['filedeftb']);
+		UpdateTheFile($last_id_all_loop,($r['id'] ?? 0),$cr_newsclassid_all_loop,($public_r['filedeftb'] ?? 1));
 		//取第一张图片为标题图片
 		$addtitlepic="";
-		if($cr['getfirstpic']&&$titlepicnoval)
+		if(!empty($cr['getfirstpic']) && $titlepicnoval)
 		{
-			$firsttitlepic=GetFpicToTpic($cr[newsclassid],$id,$cr['getfirstpic'],$cr['getfirstspic'],$cr['getfirstspicw'],$cr['getfirstspich'],$public_r['filedeftb']);
+			$filedeftb_fpic_all_loop = $public_r['filedeftb'] ?? 1;
+			$firsttitlepic=GetFpicToTpic($cr_newsclassid_all_loop,$last_id_all_loop,($cr['getfirstpic'] ?? 0),($cr['getfirstspic'] ?? 0),($cr['getfirstspicw'] ?? 0),($cr['getfirstspich'] ?? 0),$filedeftb_fpic_all_loop);
 			if($firsttitlepic)
 			{
 				$addtitlepic=",titlepic='".addslashes($firsttitlepic)."',ispic=1";
 			}
 		}
 		//文件命名
-		$filename=ReturnInfoFilename($cr[newsclassid],$id,$r[filenameqz]);
+		$filename=ReturnInfoFilename($cr_newsclassid_all_loop,$last_id_all_loop,($r['filenameqz'] ?? ''));
 		//信息地址
 		$updateinfourl='';
 		if(!$isurl)
 		{
-			$infourl=GotoGetTitleUrl($cr['newsclassid'],$id,$newspath,$filename,0,$isurl,'');
+			$infourl=GotoGetTitleUrl($cr_newsclassid_all_loop,$last_id_all_loop,$newspath,$filename,0,$isurl,'');
 			$updateinfourl=",titleurl='$infourl'";
 		}
-        $usql=$empire->query("update ".$infotbr['tbname']." set filename='$filename'".$updateinfourl.$addtitlepic." where id='$id'");
+        $usql=$empire->query("update ".$infotbr['tbname']." set filename='$filename'".$updateinfourl.$addtitlepic." where id='$last_id_all_loop'");
 	}
-	$fm=ehtmlspecialchars($_GET['fm']);
+	$fm=ehtmlspecialchars($_GET['fm'] ?? '');
 	//全部入库完毕
 	if(empty($b))
 	{
-		//取得忧化字段
+		$updatefield_final_all = ''; // Initialize
+		//取得优化字段
 		for($ci=0;$ci<$ccount-1;$ci++)
 	    {
 			$cir=explode($field,$cjr[$ci]);
+			if(!isset($cir[1])) { continue; }
 			$cifield=$cir[1];
 			if($cifield=="title")
 			{
 				continue;
 			}
-			$updatefield.=",".$cifield."=''";
+			$updatefield_final_all.=",".$cifield."=''";
 		}
 		//状态原记录
-		if($cr['delloadinfo'])//删除
+		if(!empty($cr['delloadinfo']))//删除
 		{
-			$del=$empire->query("delete from {$dbtbpre}ecms_infotmp_".$cr[tbname]." where classid='$classid'");
+			$del=$empire->query("delete from {$dbtbpre}ecms_infotmp_".$cr_tbname_all." where classid='$classid_int'");
 		}
 		else
 		{
-			$del=$empire->query("update {$dbtbpre}ecms_infotmp_".$cr[tbname]." set checked=1,keyboard=''".$updatefield." where classid='$classid'");
+			$del=$empire->query("update {$dbtbpre}ecms_infotmp_".$cr_tbname_all." set checked=1,keyboard=''".$updatefield_final_all." where classid='$classid_int'");
 		}
 		if($fm)
 		{
-			echo"<link rel=\"stylesheet\" href=\"../data/images/css.css\" type=\"text/css\"><body topmargin=0><font color=red>".$cr[classname]."  ".$fun_r['CjLoadInInfosSuccess']."</font>,  <input type=button name=button value='".$fun_r['OnlickLoadInCj']."' onclick=\"window.open('CheckCj.php?classid=$classid&from=".ehtmlspecialchars($_GET[from]).hReturnEcmsHashStrHref2(0)."');\"></body>";
+			echo"<link rel=\"stylesheet\" href=\"../data/images/css.css\" type=\"text/css\"><body topmargin=0><font color=red>".($cr['classname'] ?? '')."  ".($fun_r['CjLoadInInfosSuccess'] ?? 'Infos loaded successfully.')."</font>,  <input type=button name=button value='".($fun_r['OnlickLoadInCj'] ?? 'Click to load CJ')."' onclick=\"window.open('CheckCj.php?classid=$classid_int&from=".(ehtmlspecialchars($_GET['from'] ?? '')).hReturnEcmsHashStrHref2(0)."');\"></body>";
 			exit();
 		}
 		else
 		{
-			printerror("CjLoadDbSuccess","CheckCj.php?classid=$classid&from=".ehtmlspecialchars($_GET[from]).hReturnEcmsHashStrHref2(0));
+			printerror("CjLoadDbSuccess","CheckCj.php?classid=$classid_int&from=".(ehtmlspecialchars($_GET['from'] ?? '')).hReturnEcmsHashStrHref2(0));
 		}
 	}
-	//echo "<b>$cr[classname]</b>&nbsp;&nbsp;".$fun_r['OneCjLoadDbSuccess']."(ID:<font color=red><b>".$newstart."</b></font>)<script>self.location.href='ecmscj.php?enews=CjNewsIn_all&checked=$checked&uptime=$uptime&classid=$classid&start=$newstart&fm=$fm&from=".ehtmlspecialchars($_GET[from]).hReturnEcmsHashStrHref(0)."';</script>";
-	echo"<meta http-equiv=\"refresh\" content=\"".$cr['loadkeeptime'].";url=ecmscj.php?enews=CjNewsIn_all&checked=$checked&uptime=$uptime&classid=$classid&start=$newstart&fm=$fm&from=".ehtmlspecialchars($_GET[from]).hReturnEcmsHashStrHref(0)."\"><b>".$cr['classname']."</b>&nbsp;&nbsp;".$fun_r['OneCjLoadDbSuccess']."(ID:<font color=red><b>".$newstart."</b></font>)";
+	echo"<meta http-equiv=\"refresh\" content=\"".($cr['loadkeeptime'] ?? 1).";url=ecmscj.php?enews=CjNewsIn_all&checked=$checked_int&uptime=$uptime&classid=$classid_int&start=$newstart&fm=$fm&from=".(ehtmlspecialchars($_GET['from'] ?? '')).hReturnEcmsHashStrHref(0)."\"><b>".($cr['classname'] ?? '')."</b>&nbsp;&nbsp;".($fun_r['OneCjLoadDbSuccess'] ?? 'One info loaded successfully.')."(ID:<font color=red><b>".($newstart ?? 0)."</b></font>)";
 	exit();
 }
 
@@ -2334,10 +2400,10 @@ function LoadInCj($add,$file,$file_name,$file_type,$file_size,$userid,$username)
 	$data=ReadFiletext($path);
 	DelFiletext($path);
 	$r=explode($recordexp,$data);
-	$empirecmsver=$r[0];
-	$mainstr=$r[1];
-	$datafield=$r[2];
-	$datastr=$r[3];
+	$empirecmsver = $r[0] ?? '';
+	$mainstr = $r[1] ?? '';
+	$datafield = $r[2] ?? '';
+	$datastr = $r[3] ?? '';
 	if(empty($mainstr))
 	{
 		printerror("EmptyLoadInCjFile","history.go(-1)");

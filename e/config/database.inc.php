@@ -6,9 +6,9 @@ $db_password = "m110110";
 $db_dbname = "sq_5zipai";
 
 // 创建连接
-$conn = mysqli_connect($db_servername, $db_username, $db_password, $db_dbname);
+// $conn = mysqli_connect($db_servername, $db_username, $db_password, $db_dbname);
 // Check connection
-if (!$conn) {
-    die("连接失败: " . mysqli_connect_error());
-}
+// if (!$conn) {
+//     die("连接失败: " . mysqli_connect_error());
+// }
 ?>

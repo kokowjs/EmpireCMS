@@ -93,12 +93,21 @@ function CheckShowNewsLevel($infor){
 	//是否登陆
 	$user_r=ViewCheckLogin($infor);
 	//验证权限
-	if($class_r[$infor[classid]]['cgtoinfo'])//栏目设置
+	$info_classid = $infor['classid'] ?? null;
+	$info_groupid = $infor['groupid'] ?? null;
+	$info_userfen = $infor['userfen'] ?? null;
+	$info_id = $infor['id'] ?? null;
+	$info_title = $infor['title'] ?? '';
+
+	if ($info_classid !== null && isset($class_r[$info_classid]['cgtoinfo']) && $class_r[$info_classid]['cgtoinfo'])//栏目设置
 	{
-		$checkcr=$empire->fetch1("select cgroupid from {$dbtbpre}enewsclass where classid='$infor[classid]'");
-		if($checkcr['cgroupid'])
+		$checkcr=$empire->fetch1("select cgroupid from {$dbtbpre}enewsclass where classid='$info_classid'");
+		if (!empty($checkcr['cgroupid'])) // Also check if cgroupid is not empty
 		{
-			if(!strstr($checkcr[cgroupid],','.$user_r[groupid].','))
+			// Ensure cgroupid is a string for strstr, and user_r groupid is available
+			$cgroupid_str = (string)($checkcr['cgroupid'] ?? '');
+			$user_groupid_str = isset($user_r['groupid']) ? ','.$user_r['groupid'].',' : '';
+			if(!strstr($cgroupid_str, $user_groupid_str))
 			{
 				$infor['eclass_cgroupid']=$checkcr[cgroupid];
 				if(!getcvar('returnurl'))
@@ -109,11 +118,13 @@ function CheckShowNewsLevel($infor){
 			}
 		}
 	}
-	if($groupid)//信息设置
+	if($info_groupid)//信息设置
 	{
-		if($groupid>0)//会员组
+		if($info_groupid>0)//会员组
 		{
-			if($level_r[$groupid][level]>$level_r[$user_r[groupid]][level])
+			$level_r_group_level = (int)($level_r[$info_groupid]['level'] ?? 0);
+			$user_r_group_level = (int)($level_r[$user_r['groupid']]['level'] ?? 0);
+			if($level_r_group_level > $user_r_group_level)
 			{
 				if(!getcvar('returnurl'))
 				{
@@ -137,32 +148,37 @@ function CheckShowNewsLevel($infor){
 		}
 	}
 	//扣点
-	if(!empty($userfen))
+	if(!empty($info_userfen))
 	{
 		//是否有历史记录
-		$bakr=$empire->fetch1("select id,truetime from {$dbtbpre}enewsdownrecord where id='$id' and classid='$classid' and userid='$user_r[userid]' and online=2 order by truetime desc limit 1");
-		if($bakr['id']&&(time()-$bakr['truetime']<=$public_r['redoview']*3600))
+		$bakr=$empire->fetch1("select id,truetime from {$dbtbpre}enewsdownrecord where id='$info_id' and classid='$info_classid' and userid='".($user_r['userid'] ?? 0)."' and online=2 order by truetime desc limit 1");
+		
+		$bakr_id = $bakr['id'] ?? null;
+		$bakr_truetime = $bakr['truetime'] ?? 0;
+		$public_r_redoview = (int)($public_r['redoview'] ?? 0);
+
+		if($bakr_id && (time()-$bakr_truetime <= $public_r_redoview*3600))
 		{}
 		else
 		{
-			if($user_r[userdate]-time()>0)//包月
+			if((($user_r['userdate'] ?? 0) - time()) > 0)//包月
 			{}
 			else
 			{
-				if($user_r[userfen]<$userfen)
+				if(($user_r['userfen'] ?? 0) < $info_userfen)
 				{
 					if(!getcvar('returnurl'))
 					{
 						esetcookie("returnurl",$toreturnurl,0);
 					}
-					eCheckLevelInfo_ViewInfoMsg($user_r,$infor,'NotUserfen');
+					eCheckLevelInfo_ViewInfoMsg($user_r,$infor,'NotUserfen'); // $infor is still the original param
 				}
 				//扣点
-				$usql=$empire->query("update ".eReturnMemberTable()." set ".egetmf('userfen')."=".egetmf('userfen')."-".$userfen." where ".egetmf('userid')."='$user_r[userid]'");
+				$usql=$empire->query("update ".eReturnMemberTable()." set ".egetmf('userfen')."=".egetmf('userfen')."-".$info_userfen." where ".egetmf('userid')."='".($user_r['userid'] ?? 0)."'");
 			}
 			//备份下载记录
-			$utfusername=$user_r['username'];
-			BakDown($classid,$id,0,$user_r['userid'],$utfusername,$infor[title],$userfen,2);
+			$utfusername= $user_r['username'] ?? '';
+			BakDown($info_classid, $info_id, 0, ($user_r['userid'] ?? 0), $utfusername, $info_title, $info_userfen, 2);
 		}
 	}
 }
@@ -181,16 +197,25 @@ if(!defined('PageCheckLevel'))
 	$link=db_connect();
 	$empire=new mysqlquery();
 	$check_tbname=RepPostVar($check_tbname);
-	$checkinfor=$empire->fetch1("select * from {$dbtbpre}ecms_".$check_tbname." where id='$check_infoid' limit 1");
-	if(!$checkinfor['id']||$checkinfor['classid']!=$check_classid)
+	$fetched_checkinfor=$empire->fetch1("select * from {$dbtbpre}ecms_".$check_tbname." where id='$check_infoid' limit 1");
+	if(empty($fetched_checkinfor['id']) || $fetched_checkinfor['classid']!=$check_classid)
 	{
 		echo"<script>alert('此信息不存在');history.go(-1);</script>";
 		exit();
 	}
+    $checkinfor = $fetched_checkinfor; // Assign to original variable name after check
 	//副表
-	$check_mid=$class_r[$checkinfor[classid]]['modid'];
-	$checkfinfor=$empire->fetch1("select ".ReturnSqlFtextF($check_mid)." from {$dbtbpre}ecms_".$check_tbname."_data_".$checkinfor[stb]." where id='$checkinfor[id]' limit 1");
-	$checkinfor=array_merge($checkinfor,$checkfinfor);
+	$check_mid = isset($class_r[$checkinfor['classid']]['modid']) ? $class_r[$checkinfor['classid']]['modid'] : null;
+    $checkfinfor_result = null;
+    if ($check_mid) { // Only fetch if modid is found and valid
+        $stb = $checkinfor['stb'] ?? null;
+        if ($stb !== null) {
+            $checkfinfor_result = $empire->fetch1("select ".ReturnSqlFtextF($check_mid)." from {$dbtbpre}ecms_".$check_tbname."_data_".$stb." where id='".$checkinfor['id']."' limit 1");
+        }
+    }
+	$checkfinfor_arr = is_array($checkfinfor_result) ? $checkfinfor_result : array();
+	// $checkinfor is confirmed to be an array if we reached here
+	$checkinfor = array_merge($checkinfor, $checkfinfor_arr);
 }
 else
 {
@@ -199,11 +224,16 @@ else
 require_once(ECMS_PATH.'e/member/class/user.php');
 //验证IP
 eCheckAccessDoIp('showinfo');
-if($checkinfor['groupid']||$class_r[$checkinfor['classid']]['cgtoinfo'])
+if( (!empty($checkinfor['groupid'])) || (isset($class_r[$checkinfor['classid']]['cgtoinfo']) && $class_r[$checkinfor['classid']]['cgtoinfo']) )
 {
 	include_once(ECMS_PATH.'e/template/public/checklevel/info1.php');
 	$toreturnurl=eReturnSelfPage(1);	//返回页面地址
-	$gotourl=$ecms_config['member']['loginurl']?$ecms_config['member']['loginurl']:$public_r['newsurl']."e/member/login/";	//登陆地址
+	
+	// PHP 8.x compatible handling for potentially undefined array keys
+	$loginUrl = $ecms_config['member']['loginurl'] ?? null;
+	$newsUrlBase = $public_r['newsurl'] ?? ''; // Default to empty string if 'newsurl' is not set
+	$gotourl = $loginUrl ? $loginUrl : ($newsUrlBase . "e/member/login/");	//登陆地址
+	
 	CheckShowNewsLevel($checkinfor);
 }
 if(!defined('PageCheckLevel'))

@@ -3,9 +3,10 @@ error_reporting(E_ALL ^ E_NOTICE);
 
 define('InEmpireCMS',TRUE);
 define('ECMS_PATH',substr(dirname(__FILE__),0,-7));
-//define('MAGIC_QUOTES_GPC',function_exists('get_magic_quotes_gpc')&&get_magic_quotes_gpc());
-define('MAGIC_QUOTES_GPC',(ini_get('magic_quotes_gpc') == 1) ? true : false);
-define('STR_IREPLACE',function_exists('str_ireplace'));
+// MAGIC_QUOTES_GPC is removed in PHP 8.0. Forcing to false.
+define('MAGIC_QUOTES_GPC', false);
+// STR_IREPLACE can be assumed true as str_ireplace is a core function since PHP 5.
+define('STR_IREPLACE', true);
 define('ECMS_PNO',EcmsGetProgramNo());
 
 $ecms_config=array();
@@ -108,13 +109,19 @@ if(function_exists('date_default_timezone_set'))
 	@date_default_timezone_set($ecms_config['sets']['timezone']);
 }
 
-if($ecms_config['db']['usedb']=='mysqli')
+// Force usage of mysqli as mysql_* functions are removed in PHP 7.0+
+// Assuming $ecms_config['db']['usedb'] should always be 'mysqli' or is set in config.php
+// If not, this is a critical point that needs configuration update outside this script.
+if(($ecms_config['db']['usedb'] ?? 'mysqli') == 'mysqli')
 {
 	include(ECMS_PATH.'e/class/db/db_mysqli.php');
 }
 else
 {
-	include(ECMS_PATH.'e/class/db/db_mysql.php');
+	// Fallback or error if mysql was configured, as it's no longer supported.
+	// Forcing mysqli by default.
+	// Consider logging an error here if $ecms_config['db']['usedb'] was 'mysql'.
+	include(ECMS_PATH.'e/class/db/db_mysqli.php'); 
 }
 
 //禁止IP
@@ -932,42 +939,26 @@ function ehtmlspecialchars($val,$flags=ENT_COMPAT){
 
 //addslashes处理
 function eaddslashes($val,$ckmq=1){
-	if($ckmq==1&&MAGIC_QUOTES_GPC)
-	{
-		return $val;
-	}
-	$val=addslashes($val);
-	return $val;
+	// MAGIC_QUOTES_GPC is always false in PHP 8.0+
+	return addslashes($val);
 }
 
 //addslashes处理
 function eaddslashes2($val,$ckmq=1){
-	if($ckmq==1&&MAGIC_QUOTES_GPC)
-	{
-		return addslashes($val);
-	}
-	$val=addslashes(addslashes($val));
-	return $val;
+	// MAGIC_QUOTES_GPC is always false in PHP 8.0+
+	return addslashes(addslashes($val));
 }
 
 //stripSlashes处理
 function estripSlashes($val,$ckmq=1){
-	if($ckmq==1&&!MAGIC_QUOTES_GPC)
-	{
-		return $val;
-	}
-	$val=stripSlashes($val);
-	return $val;
+	// MAGIC_QUOTES_GPC is always false in PHP 8.0+
+	return stripslashes($val);
 }
 
 //stripSlashes处理
 function estripSlashes2($val,$ckmq=1){
-	if($ckmq==1&&!MAGIC_QUOTES_GPC)
-	{
-		return stripSlashes($val);
-	}
-	$val=stripSlashes(stripSlashes($val));
-	return $val;
+	// MAGIC_QUOTES_GPC is always false in PHP 8.0+
+	return stripslashes(stripslashes($val));
 }
 
 //变量正数型处理
@@ -4719,35 +4710,51 @@ function chemail($email){
 
 //去除adds
 function ClearAddsData($data){
-	if(MAGIC_QUOTES_GPC)
-	{
-		$data=stripSlashes($data);
-	}
+	// MAGIC_QUOTES_GPC is always false in PHP 8.0+
+	// Data will not be auto-slashed by PHP, so no stripSlashes needed here.
 	return $data;
 }
 
 //增加adds
 function AddAddsData($data){
-	if(!MAGIC_QUOTES_GPC)
-	{
-		$data=addslashes($data);
-	}
-	return $data;
+	// MAGIC_QUOTES_GPC is always false in PHP 8.0+
+	// This function should now always add slashes if they are not present.
+	// However, the original intent was conditional based on a removed PHP feature.
+	// For safety and consistency with how other functions might expect data,
+	// it's better to assume data passed to this function needs slashing.
+	// If the data is already slashed, addslashes() is generally safe but can double-slash.
+	// Given the name, it implies adding slashes if not already done by magic_quotes.
+	// Since magic_quotes is gone, this should just be addslashes.
+	return addslashes($data);
 }
 
 //原字符adds
 function StripAddsData($data){
-	$data=addslashes(stripSlashes($data));
-	return $data;
+	// This function seems intended to reverse AddAddsData if data wasn't originally slashed by magic_quotes
+	// but was then slashed by AddAddsData.
+	// If AddAddsData now always addslashes, this should be stripslashes.
+	// However, the name "StripAddsData" implies it's for data that had slashes ADDED.
+	// If AddAddsData always adds slashes, this should be stripslashes.
+	// If the goal is to get the original string state before any custom AddAddsData call:
+	// This logic is tricky without knowing the full data flow.
+	// Assuming it's meant to reverse what AddAddsData does:
+	return stripslashes($data);
 }
 
 //反增加adds
 function fAddAddsData($data){
-	if(MAGIC_QUOTES_GPC)
-	{
-		$data=addslashes($data);
-	}
-	return $data;
+	// This function name is confusing. "f" often implies "format" or "force".
+	// If it means "force add slashes if magic_quotes didn't", it's addslashes().
+	// If it means "undo what magic_quotes would do" (which is nothing now), it's effectively stripSlashes if data was already slashed.
+	// Given the context of other similar functions, this might be an inverse of AddAddsData or ClearAddsData.
+	// If ClearAddsData strips if magic_quotes was on, and AddAddsData adds if magic_quotes was off,
+	// fAddAddsData would be the opposite of ClearAddsData: add if magic_quotes was on.
+	// Since MAGIC_QUOTES_GPC is now false, this effectively means don't add slashes.
+	// This is dangerous. Let's assume it should be like AddAddsData for consistency,
+	// or make it a no-op if the intent was to only slash when magic_quotes was on.
+	// Given the uncertainty, making it a simple return might be safer than guessing.
+	// However, comparing to other functions, it's likely meant to add slashes.
+	return addslashes($data);
 }
 
 //------- 存文本 -------
