@@ -1,0 +1,20 @@
+<?php
+$name = $_POST['name'];
+$email = $_POST['email'];
+//print_r($username);
+if (!empty($name) and !empty($email)) {
+    //echo json_encode($_POST);
+    $pattern = "/^([0-9A-Za-z\\-_\\.]+)@([0-9a-z]+\\.[a-z]{2,3}(\\.[a-z]{2})?)$/i";
+    if (preg_match($pattern, $email)) {
+        $myfile = fopen("email.txt", "a") or die("Unable to open file!");
+        $txt = "$email,$name,$name,,,\n";
+        fwrite($myfile, $txt);
+        fclose($myfile);
+        echo '{"message":"亲爱的' . $name . '，您已订阅成功，若访问地址变化我们会及时发送邮件至' . $email . ' :)"}';
+    } else {
+        echo '{"message":"您输入的邮箱地址不正确 :)"}';
+    }
+} else {
+    echo '{"message":"请检查您输入的EMAIL和尊称 :)"}';
+}
+?>
